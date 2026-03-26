@@ -1,0 +1,291 @@
+# workmark
+
+Most workspaces accumulate a graveyard of shell scripts, Makefiles, npm scripts, and "just run this" tribal knowledge. Workmark lets you define these workspace operations in TypeScript and run them from:
+
+- **CLI** — the `ws` command, with auto-generated help and argument parsing
+- **VS Code** — a dashboard extension with auto-generated forms for every command/parameter
+- **AI Agents** — a built-in MCP server so any MCP client can discover and run your commands
+
+<div align="center">
+<image src="screenshot.png" alt="Workmark VS Code extension screenshot" width="auto" />
+</div>
+
+## Quick start
+
+### Install
+
+```bash
+pnpm add @ldlework/workmark
+```
+
+### Write a command
+
+Create commands in `.ws/commands/`. Subdirectories become groups in the CLI, dashboard and MCP server.
+
+```ts
+// .ws/commands/art/sprites.ts
+import { ok, fail, exec } from "@ldlework/workmark/helpers";
+import { z } from "zod";
+import type { CommandDef } from "@ldlework/workmark/types";
+
+export default {
+  name: "sprites",
+  label: "Build Sprites",
+  description: "Pack sprite sheets from raw assets",
+  args: {
+    target: z.enum(["all", "characters", "terrain", "ui"]).default("all"),
+  },
+  flags: {
+    watch: z.boolean().default(false),
+  },
+  handler: async ({ target, watch }) => {
+    const cmd = `./tools/pack-sprites.sh ${target}${watch ? " --watch" : ""}`;
+    try {
+      return ok(exec(cmd, { cwd: process.cwd() }));
+    } catch (e) {
+      return fail(e);
+    }
+  },
+} satisfies CommandDef;
+```
+
+### Run it
+
+```bash
+ws sprites                      # pack all sprite sheets
+ws sprites characters --watch   # pack characters, rebuild on change
+ws --help                       # list all commands
+ws sprites --help               # per-command help
+```
+
+## Projects
+
+If your workspace contains multiple packages or services, you can define **projects** so that commands can discover and operate on them. Drop a `ws.ts` in any project directory:
+
+```ts
+// packages/api/ws.ts
+import { defineProject } from "@ldlework/workmark/define";
+
+export default defineProject({
+  name: "api",
+  tags: ["backend"],
+});
+```
+
+```ts
+// packages/web/ws.ts
+import { defineProject } from "@ldlework/workmark/define";
+
+export default defineProject({
+  name: "web",
+  tags: ["frontend"],
+});
+```
+
+Workmark recursively discovers all `ws.ts` files from the workspace root (respecting `.gitignore`). Projects are available to commands via the workspace object — query them by name with `workspace.get("api")`, by tag with `workspace.withTag("backend")`, or by capability with `workspace.withCapability("deploy")`.
+
+### Capabilities
+
+Capabilities are structured metadata attached to projects. A project declares what it supports, and commands filter by it — this keeps project-specific config out of your command files. For example, marking a project with `deploy: true` advertises that it has the `scripts/deploy.sh` script that the `deploy` command expects.
+
+```ts
+// packages/api/ws.ts
+export default defineProject({
+  name: "api",
+  tags: ["backend"],
+  capabilities: { deploy: true },
+});
+```
+
+```ts
+// packages/web/ws.ts
+export default defineProject({
+  name: "web",
+  tags: ["frontend"],
+  capabilities: { deploy: true },
+});
+```
+
+`workspace.withCapability("deploy")` returns both projects. Capabilities can also carry structured data:
+
+```ts
+export default defineProject({
+  name: "api",
+  capabilities: {
+    deploy: true,
+    build: { targets: ["esm", "cjs"] },
+  },
+});
+```
+
+Commands read this with `project.capability<{ targets: string[] }>("build")`. This pattern works for anything — build targets, test runners, linting rules.
+
+### Dynamic commands
+
+A **dynamic command** receives the workspace and builds its schema from project metadata. Here, the `deploy` command finds all projects with the `deploy` capability and populates its argument from their names:
+
+```ts
+// .ws/commands/deploy.ts
+import { ok, exec } from "@ldlework/workmark/helpers";
+import { z } from "zod";
+import type { DynamicCommandDef } from "@ldlework/workmark/types";
+
+export default {
+  name: "deploy",
+  label: "Deploy",
+  description: "Deploy a project",
+  factory: (workspace) => {
+    const projects = workspace.withCapability("deploy");
+    const names = projects.map((p) => p.name);
+
+    return {
+      args: {
+        project: z.enum(names as [string, ...string[]]),
+      },
+      handler: async ({ project }) => {
+        const p = workspace.get(project as string);
+        return ok(exec(`./scripts/deploy.sh`, { cwd: p.dir }));
+      },
+    };
+  },
+} satisfies DynamicCommandDef;
+```
+
+```bash
+ws deploy api
+ws deploy web
+```
+
+The CLI help, VS Code dropdowns, and MCP tool schema all show exactly the valid project names — no impossible combinations, no runtime validation needed.
+
+## Features
+
+### CLI
+
+The `ws` binary auto-discovers your commands and generates help text, argument parsing, and type coercion.
+
+```
+$ ws --help
+
+Usage: ws <command> [args...]
+
+Commands:
+  sprites         Pack sprite sheets from raw assets
+  deploy          Deploy a project to an environment
+  db:migrate      Run database migrations
+
+Run ws <command> --help for details on a specific command.
+```
+
+Arguments support positional args and named flags:
+
+```bash
+ws sprites characters              # positional (from args)
+ws sprites characters --watch      # positional + flag
+ws deploy api                      # dynamic command with project arg
+ws deploy --project api            # everything works as flags too
+```
+
+### VS Code dashboard
+
+The `workmark-vsc` extension adds a **Workspace** panel to the activity bar. It shows all your commands grouped by category with auto-generated forms:
+
+- Enum fields become dropdowns
+- Booleans become checkboxes
+- Numbers get validated inputs with min/max
+- Required fields are enforced before execution
+- Double-click any command to jump to its source file
+
+Commands run in the integrated terminal, so you get full color output and interactivity.
+
+### MCP server
+
+Workmark includes a built-in [Model Context Protocol](https://modelcontextprotocol.io) server. Every command you define is automatically exposed as an MCP tool, which means AI assistants like Claude can discover and invoke your workspace commands.
+
+```jsonc
+// claude_desktop_config.json or .mcp.json
+{
+  "mcpServers": {
+    "workspace": {
+      "command": "node",
+      "args": ["./node_modules/@ldlework/workmark/dist/index.js"]
+    }
+  }
+}
+```
+
+Once connected, your assistant can run `ws deploy api` the same way you do — with full schema validation and typed responses.
+
+## Project structure
+
+```
+your-workspace/
+├── .ws/
+│   └── commands/
+│       ├── deploy.ts         # Root-level command
+│       ├── art/
+│       │   └── sprites.ts    # Grouped under "Art"
+│       └── db/
+│           └── migrate.ts    # Grouped under "Db"
+├── packages/
+│   ├── api/
+│   │   └── ws.ts             # Project definition
+│   └── web/
+│       └── ws.ts
+```
+
+- **`ws.ts`** — project definitions, discovered recursively
+- **`.ws/commands/**/*.ts`** — command files, grouped by directory name
+
+## API reference
+
+### Defining
+
+```ts
+import { defineProject } from "@ldlework/workmark/define";
+```
+
+### Helpers
+
+```ts
+import { ok, fail, exec, execAsync } from "@ldlework/workmark/helpers";
+
+ok(data)                     // Success response
+fail(error)                  // Error response
+exec(cmd, { cwd })           // Synchronous shell exec
+execAsync(cmd, { cwd })      // Async shell exec
+```
+
+### Loading
+
+```ts
+import { loadWorkspace } from "@ldlework/workmark/workspace";
+import { loadCommands } from "@ldlework/workmark";
+
+const workspace = await loadWorkspace();
+const commands = await loadCommands(workspace);
+```
+
+## Development
+
+```bash
+# Install dependencies
+pnpm install
+
+# Build all packages
+pnpm build
+
+# Type check
+pnpm typecheck
+```
+
+The monorepo contains two packages:
+
+| Package | Description |
+|---|---|
+| `@ldlework/workmark` | Core framework, CLI, and MCP server |
+| `@ldlework/workmark-vsc` | VS Code extension (Workspace Dashboard) |
+
+## License
+
+MIT

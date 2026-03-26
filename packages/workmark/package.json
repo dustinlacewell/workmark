@@ -1,0 +1,35 @@
+{
+  "name": "@ldlework/workmark",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/lib/load.js",
+  "bin": {
+    "ws": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": "./dist/lib/load.js",
+    "./types": "./dist/lib/types.js",
+    "./helpers": "./dist/lib/helpers.js",
+    "./workspace": "./dist/lib/workspace.js",
+    "./define": "./dist/lib/define.js",
+    "./project": "./dist/lib/project.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "ignore": "^7.0.5",
+    "jiti": "^2.6.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
