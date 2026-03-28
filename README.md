@@ -256,6 +256,8 @@ ok(data)                     // Wrap data in a success CallToolResult
 fail(error)                  // Wrap error in an error CallToolResult
 exec(cmd, { cwd })           // Synchronous shell exec, returns CallToolResult
 execAsync(cmd, { cwd })      // Async shell exec, returns Promise<CallToolResult>
+execRaw(cmd, { cwd })        // Synchronous shell exec, returns string (throws on error)
+execAsyncRaw(cmd, { cwd })   // Async shell exec, returns Promise<string> (throws on error)
 ```
 
 ### Loading

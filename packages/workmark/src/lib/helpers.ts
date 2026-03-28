@@ -37,18 +37,20 @@ export interface ExecOptions {
   timeout?: number; // ms, default 120_000
 }
 
-export function exec(command: string, opts: ExecOptions): CallToolResult {
+export function execRaw(command: string, opts: ExecOptions): string {
   const { cwd, timeout = 120_000 } = opts;
+  return execSync(command, {
+    cwd,
+    timeout,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 1024 * 1024 * 10,
+  });
+}
+
+export function exec(command: string, opts: ExecOptions): CallToolResult {
   try {
-    return ok(
-      execSync(command, {
-        cwd,
-        timeout,
-        encoding: "utf-8",
-        stdio: ["ignore", "pipe", "pipe"],
-        maxBuffer: 1024 * 1024 * 10,
-      }),
-    );
+    return ok(execRaw(command, opts));
   } catch (e) {
     return fail(e);
   }
@@ -56,19 +58,26 @@ export function exec(command: string, opts: ExecOptions): CallToolResult {
 
 const execPromise = promisify(cpExec);
 
+export async function execAsyncRaw(
+  command: string,
+  opts: ExecOptions,
+): Promise<string> {
+  const { cwd, timeout = 120_000 } = opts;
+  const { stdout } = await execPromise(command, {
+    cwd,
+    timeout,
+    encoding: "utf-8",
+    maxBuffer: 1024 * 1024 * 10,
+  });
+  return stdout;
+}
+
 export async function execAsync(
   command: string,
   opts: ExecOptions,
 ): Promise<CallToolResult> {
-  const { cwd, timeout = 120_000 } = opts;
   try {
-    const { stdout } = await execPromise(command, {
-      cwd,
-      timeout,
-      encoding: "utf-8",
-      maxBuffer: 1024 * 1024 * 10,
-    });
-    return ok(stdout);
+    return ok(await execAsyncRaw(command, opts));
   } catch (e) {
     return fail(e);
   }
