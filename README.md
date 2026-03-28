@@ -187,7 +187,7 @@ ws deploy --project api            # everything works as flags too
 Install the extension from a [release](https://github.com/dustinlacewell/workmark/releases) `.vsix` file:
 
 ```bash
-code --install-extension workmark-vsc-1.0.0.vsix
+code --install-extension workmark-vsc-1.1.0.vsix
 ```
 
 The `workmark-vsc` extension adds a **Workspace** panel to the activity bar. It shows all your commands grouped by category with auto-generated forms:
