@@ -1,4 +1,4 @@
-import { ok, fail, exec } from "@ldlework/workmark/helpers";
+import { exec } from "@ldlework/workmark/helpers";
 import type { StaticCommandDef } from "@ldlework/workmark/types";
 
 export default {
@@ -6,10 +6,6 @@ export default {
   label: "Type Check",
   description: "Run TypeScript type checking across all packages",
   handler: async () => {
-    try {
-      return ok(exec("pnpm typecheck", { cwd: process.cwd() }));
-    } catch (e) {
-      return fail(e);
-    }
+    return exec("pnpm typecheck", { cwd: process.cwd() });
   },
 } satisfies StaticCommandDef;

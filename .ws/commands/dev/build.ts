@@ -1,4 +1,4 @@
-import { ok, fail, exec } from "@ldlework/workmark/helpers";
+import { exec } from "@ldlework/workmark/helpers";
 import { z } from "zod";
 import type { StaticCommandDef } from "@ldlework/workmark/types";
 
@@ -12,14 +12,10 @@ export default {
   handler: async (args) => {
     const pkg = (args.package as string) ?? "all";
     const cwd = process.cwd();
-    try {
-      if (pkg === "all") {
-        return ok(exec("pnpm build", { cwd }));
-      }
-      const dir = pkg === "workmark" ? "packages/workmark" : "packages/workmark-vsc";
-      return ok(exec("pnpm build", { cwd: `${cwd}/${dir}` }));
-    } catch (e) {
-      return fail(e);
+    if (pkg === "all") {
+      return exec("pnpm build", { cwd });
     }
+    const dir = pkg === "workmark" ? "packages/workmark" : "packages/workmark-vsc";
+    return exec("pnpm build", { cwd: `${cwd}/${dir}` });
   },
 } satisfies StaticCommandDef;

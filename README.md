@@ -24,7 +24,7 @@ Create commands in `.ws/commands/`. Subdirectories become groups in the CLI, das
 
 ```ts
 // .ws/commands/art/sprites.ts
-import { ok, fail, exec } from "@ldlework/workmark/helpers";
+import { exec } from "@ldlework/workmark/helpers";
 import { z } from "zod";
 import type { CommandDef } from "@ldlework/workmark/types";
 
@@ -40,11 +40,7 @@ export default {
   },
   handler: async ({ target, watch }) => {
     const cmd = `./tools/pack-sprites.sh ${target}${watch ? " --watch" : ""}`;
-    try {
-      return ok(exec(cmd, { cwd: process.cwd() }));
-    } catch (e) {
-      return fail(e);
-    }
+    return exec(cmd, { cwd: process.cwd() });
   },
 } satisfies CommandDef;
 ```
@@ -126,7 +122,7 @@ A **dynamic command** receives the workspace and builds its schema from project 
 
 ```ts
 // .ws/commands/deploy.ts
-import { ok, exec } from "@ldlework/workmark/helpers";
+import { exec } from "@ldlework/workmark/helpers";
 import { z } from "zod";
 import type { DynamicCommandDef } from "@ldlework/workmark/types";
 
@@ -144,7 +140,7 @@ export default {
       },
       handler: async ({ project }) => {
         const p = workspace.get(project as string);
-        return ok(exec(`./scripts/deploy.sh`, { cwd: p.dir }));
+        return exec(`./scripts/deploy.sh`, { cwd: p.dir });
       },
     };
   },
@@ -256,10 +252,10 @@ import { defineProject } from "@ldlework/workmark/define";
 ```ts
 import { ok, fail, exec, execAsync } from "@ldlework/workmark/helpers";
 
-ok(data)                     // Success response
-fail(error)                  // Error response
-exec(cmd, { cwd })           // Synchronous shell exec
-execAsync(cmd, { cwd })      // Async shell exec
+ok(data)                     // Wrap data in a success CallToolResult
+fail(error)                  // Wrap error in an error CallToolResult
+exec(cmd, { cwd })           // Synchronous shell exec, returns CallToolResult
+execAsync(cmd, { cwd })      // Async shell exec, returns Promise<CallToolResult>
 ```
 
 ### Loading

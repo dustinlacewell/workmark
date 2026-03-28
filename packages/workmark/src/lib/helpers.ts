@@ -37,15 +37,21 @@ export interface ExecOptions {
   timeout?: number; // ms, default 120_000
 }
 
-export function exec(command: string, opts: ExecOptions): string {
+export function exec(command: string, opts: ExecOptions): CallToolResult {
   const { cwd, timeout = 120_000 } = opts;
-  return execSync(command, {
-    cwd,
-    timeout,
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: 1024 * 1024 * 10,
-  });
+  try {
+    return ok(
+      execSync(command, {
+        cwd,
+        timeout,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+        maxBuffer: 1024 * 1024 * 10,
+      }),
+    );
+  } catch (e) {
+    return fail(e);
+  }
 }
 
 const execPromise = promisify(cpExec);
@@ -53,13 +59,17 @@ const execPromise = promisify(cpExec);
 export async function execAsync(
   command: string,
   opts: ExecOptions,
-): Promise<string> {
+): Promise<CallToolResult> {
   const { cwd, timeout = 120_000 } = opts;
-  const { stdout } = await execPromise(command, {
-    cwd,
-    timeout,
-    encoding: "utf-8",
-    maxBuffer: 1024 * 1024 * 10,
-  });
-  return stdout;
+  try {
+    const { stdout } = await execPromise(command, {
+      cwd,
+      timeout,
+      encoding: "utf-8",
+      maxBuffer: 1024 * 1024 * 10,
+    });
+    return ok(stdout);
+  } catch (e) {
+    return fail(e);
+  }
 }
