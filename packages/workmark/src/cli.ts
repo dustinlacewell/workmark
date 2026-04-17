@@ -2,48 +2,8 @@
 
 import { loadCommands } from "./lib/load.js";
 import { loadWorkspace } from "./lib/workspace.js";
+import { parseArgs } from "./lib/parse.js";
 import type { ResolvedCommand } from "./lib/types.js";
-
-
-// ---------------------------------------------------------------------------
-// Arg parsing
-// ---------------------------------------------------------------------------
-
-function parseValue(raw: string): unknown {
-  if (raw === "true") return true;
-  if (raw === "false") return false;
-  const n = Number(raw);
-  if (!Number.isNaN(n) && raw !== "") return n;
-  return raw;
-}
-
-function parseArgs(
-  argv: string[],
-  positionalNames: string[],
-): Record<string, unknown> {
-  const args: Record<string, unknown> = {};
-  let posIdx = 0;
-
-  for (let i = 0; i < argv.length; i++) {
-    const token = argv[i];
-
-    if (token.startsWith("--")) {
-      const key = token.slice(2);
-      const next = argv[i + 1];
-      if (next === undefined || next.startsWith("--")) {
-        args[key] = true;
-      } else {
-        args[key] = parseValue(next);
-        i++;
-      }
-    } else if (posIdx < positionalNames.length) {
-      args[positionalNames[posIdx]] = parseValue(token);
-      posIdx++;
-    }
-  }
-
-  return args;
-}
 
 // ---------------------------------------------------------------------------
 // Help
@@ -153,7 +113,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const args = parseArgs(rest, cmd.positional);
+  const args = parseArgs(rest, cmd.positional, cmd.inputSchema);
   const result = await cmd.handler(args);
 
   for (const content of result.content) {
