@@ -22,6 +22,13 @@ function fieldToJsonSchema(field: z.ZodType | Record<string, unknown>): Record<s
   return field;
 }
 
+/** A field is required unless it has a default or was wrapped with .optional(). */
+function isRequired(field: z.ZodType | Record<string, unknown>, schema: Record<string, unknown>): boolean {
+  if ("default" in schema) return false;
+  if (field instanceof z.ZodType && field.safeParse(undefined).success) return false;
+  return true;
+}
+
 /** Merge args + flags into a single JSON Schema object and return positional names. */
 function mergeSchemas(
   args?: SchemaFields,
@@ -31,29 +38,18 @@ function mergeSchemas(
   const required: string[] = [];
   const positional: string[] = [];
 
-  // Args are positional, in key order
-  if (args) {
-    for (const [name, field] of Object.entries(args)) {
+  const collect = (source: SchemaFields | undefined, isPositional: boolean) => {
+    if (!source) return;
+    for (const [name, field] of Object.entries(source)) {
       const schema = fieldToJsonSchema(field);
       properties[name] = schema;
-      positional.push(name);
-      // If no default and not explicitly optional, it's required
-      if (!("default" in schema)) {
-        required.push(name);
-      }
+      if (isPositional) positional.push(name);
+      if (isRequired(field, schema)) required.push(name);
     }
-  }
+  };
 
-  // Flags are named (--key value)
-  if (flags) {
-    for (const [name, field] of Object.entries(flags)) {
-      const schema = fieldToJsonSchema(field);
-      properties[name] = schema;
-      if (!("default" in schema)) {
-        required.push(name);
-      }
-    }
-  }
+  collect(args, true);
+  collect(flags, false);
 
   const inputSchema: Record<string, unknown> = {
     type: "object",
