@@ -87,7 +87,7 @@ function resolve(def: CommandDef, workspace: IWorkspace, group: string, sourceFi
 }
 
 export async function loadCommands(workspace: IWorkspace): Promise<ResolvedCommand[]> {
-  const commandsDir = join(workspace.root, ".ws", "commands");
+  const commandsDir = join(workspace.root, ".wm", "commands");
   if (!existsSync(commandsDir)) return [];
 
   const jiti = createJiti(commandsDir, jitiOptions());

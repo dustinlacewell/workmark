@@ -2,7 +2,7 @@
 
 Most workspaces accumulate a graveyard of shell scripts, Makefiles, npm scripts, and "just run this" tribal knowledge. Workmark lets you define these workspace operations in TypeScript and run them from:
 
-- **CLI** — the `ws` command, with auto-generated help and argument parsing
+- **CLI** — the `wm` command, with auto-generated help and argument parsing
 - **VS Code** — a dashboard extension with auto-generated forms for every command/parameter
 - **AI Agents** — a built-in MCP server so any MCP client can discover and run your commands
 
@@ -20,10 +20,10 @@ pnpm add @ldlework/workmark
 
 ### Write a command
 
-Create commands in `.ws/commands/`. Subdirectories become groups in the CLI, dashboard and MCP server.
+Create commands in `.wm/commands/`. Subdirectories become groups in the CLI, dashboard and MCP server.
 
 ```ts
-// .ws/commands/art/sprites.ts
+// .wm/commands/art/sprites.ts
 import { exec } from "@ldlework/workmark/helpers";
 import { z } from "zod";
 import type { CommandDef } from "@ldlework/workmark/types";
@@ -48,18 +48,18 @@ export default {
 ### Run it
 
 ```bash
-ws sprites                      # pack all sprite sheets
-ws sprites characters --watch   # pack characters, rebuild on change
-ws --help                       # list all commands
-ws sprites --help               # per-command help
+wm sprites                      # pack all sprite sheets
+wm sprites characters --watch   # pack characters, rebuild on change
+wm --help                       # list all commands
+wm sprites --help               # per-command help
 ```
 
 ## Projects
 
-If your workspace contains multiple packages or services, you can define **projects** so that commands can discover and operate on them. Drop a `ws.ts` in any project directory:
+If your workspace contains multiple packages or services, you can define **projects** so that commands can discover and operate on them. Drop a `wm.ts` in any project directory:
 
 ```ts
-// packages/api/ws.ts
+// packages/api/wm.ts
 import { defineProject } from "@ldlework/workmark/define";
 
 export default defineProject({
@@ -69,7 +69,7 @@ export default defineProject({
 ```
 
 ```ts
-// packages/web/ws.ts
+// packages/web/wm.ts
 import { defineProject } from "@ldlework/workmark/define";
 
 export default defineProject({
@@ -78,14 +78,14 @@ export default defineProject({
 });
 ```
 
-Workmark recursively discovers all `ws.ts` files from the workspace root (respecting `.gitignore`). Projects are available to commands via the workspace object — query them by name with `workspace.get("api")`, by tag with `workspace.withTag("backend")`, or by capability with `workspace.withCapability("deploy")`.
+Workmark recursively discovers all `wm.ts` files from the workspace root (respecting `.gitignore`). Projects are available to commands via the workspace object — query them by name with `workspace.get("api")`, by tag with `workspace.withTag("backend")`, or by capability with `workspace.withCapability("deploy")`.
 
 ### Capabilities
 
 Capabilities are structured metadata attached to projects. A project declares what it supports, and commands filter by it — this keeps project-specific config out of your command files. For example, marking a project with `deploy: true` advertises that it has the `scripts/deploy.sh` script that the `deploy` command expects.
 
 ```ts
-// packages/api/ws.ts
+// packages/api/wm.ts
 export default defineProject({
   name: "api",
   tags: ["backend"],
@@ -94,7 +94,7 @@ export default defineProject({
 ```
 
 ```ts
-// packages/web/ws.ts
+// packages/web/wm.ts
 export default defineProject({
   name: "web",
   tags: ["frontend"],
@@ -121,7 +121,7 @@ Commands read this with `project.capability<{ targets: string[] }>("build")`. Th
 A **dynamic command** receives the workspace and builds its schema from project metadata. Here, the `deploy` command finds all projects with the `deploy` capability and populates its argument from their names:
 
 ```ts
-// .ws/commands/deploy.ts
+// .wm/commands/deploy.ts
 import { exec } from "@ldlework/workmark/helpers";
 import { z } from "zod";
 import type { DynamicCommandDef } from "@ldlework/workmark/types";
@@ -148,8 +148,8 @@ export default {
 ```
 
 ```bash
-ws deploy api
-ws deploy web
+wm deploy api
+wm deploy web
 ```
 
 The CLI help, VS Code dropdowns, and MCP tool schema all show exactly the valid project names — no impossible combinations, no runtime validation needed.
@@ -158,28 +158,28 @@ The CLI help, VS Code dropdowns, and MCP tool schema all show exactly the valid 
 
 ### CLI
 
-The `ws` binary auto-discovers your commands and generates help text, argument parsing, and type coercion.
+The `wm` binary auto-discovers your commands and generates help text, argument parsing, and type coercion.
 
 ```
-$ ws --help
+$ wm --help
 
-Usage: ws <command> [args...]
+Usage: wm <command> [args...]
 
 Commands:
   sprites         Pack sprite sheets from raw assets
   deploy          Deploy a project to an environment
   db:migrate      Run database migrations
 
-Run ws <command> --help for details on a specific command.
+Run wm <command> --help for details on a specific command.
 ```
 
 Arguments support positional args and named flags:
 
 ```bash
-ws sprites characters              # positional (from args)
-ws sprites characters --watch      # positional + flag
-ws deploy api                      # dynamic command with project arg
-ws deploy --project api            # everything works as flags too
+wm sprites characters              # positional (from args)
+wm sprites characters --watch      # positional + flag
+wm deploy api                      # dynamic command with project arg
+wm deploy --project api            # everything works as flags too
 ```
 
 ### VS Code dashboard
@@ -190,7 +190,7 @@ Install the extension from a [release](https://github.com/dustinlacewell/workmar
 code --install-extension workmark-vsc-1.1.0.vsix
 ```
 
-The `workmark-vsc` extension adds a **Workspace** panel to the activity bar. It shows all your commands grouped by category with auto-generated forms:
+The `workmark-vsc` extension adds a **Workspace** panel to the activity bar. It showm all your commands grouped by category with auto-generated forms:
 
 - Enum fields become dropdowns
 - Booleans become checkboxes
@@ -216,13 +216,13 @@ Workmark includes a built-in [Model Context Protocol](https://modelcontextprotoc
 }
 ```
 
-Once connected, your assistant can run `ws deploy api` the same way you do — with full schema validation and typed responses.
+Once connected, your assistant can run `wm deploy api` the same way you do — with full schema validation and typed responses.
 
 ## Project structure
 
 ```
 your-workspace/
-├── .ws/
+├── .wm/
 │   └── commands/
 │       ├── deploy.ts         # Root-level command
 │       ├── art/
@@ -231,13 +231,13 @@ your-workspace/
 │           └── migrate.ts    # Grouped under "Db"
 ├── packages/
 │   ├── api/
-│   │   └── ws.ts             # Project definition
+│   │   └── wm.ts             # Project definition
 │   └── web/
-│       └── ws.ts
+│       └── wm.ts
 ```
 
-- **`ws.ts`** — project definitions, discovered recursively
-- **`.ws/commands/**/*.ts`** — command files, grouped by directory name
+- **`wm.ts`** — project definitions, discovered recursively
+- **`.wm/commands/**/*.ts`** — command files, grouped by directory name
 
 ## API reference
 
@@ -256,8 +256,8 @@ ok(data)                     // Wrap data in a success CallToolResult
 fail(error)                  // Wrap error in an error CallToolResult
 exec(cmd, { cwd })           // Synchronous shell exec, returns CallToolResult
 execAsync(cmd, { cwd })      // Async shell exec, returns Promise<CallToolResult>
-execRaw(cmd, { cwd })        // Synchronous shell exec, returns string (throws on error)
-execAsyncRaw(cmd, { cwd })   // Async shell exec, returns Promise<string> (throws on error)
+execRaw(cmd, { cwd })        // Synchronous shell exec, returns string (throwm on error)
+execAsyncRaw(cmd, { cwd })   // Async shell exec, returns Promise<string> (throwm on error)
 ```
 
 ### Loading

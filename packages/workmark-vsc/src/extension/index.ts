@@ -79,19 +79,19 @@ export function activate(context: vscode.ExtensionContext): void {
   // Initial load
   refresh();
 
-  // Watch ws.ts files — reload commands when project definitions change
-  const watcher = vscode.workspace.createFileSystemWatcher("**/ws.ts");
-  const onWsChange = () => refresh();
-  watcher.onDidChange(onWsChange);
-  watcher.onDidCreate(onWsChange);
-  watcher.onDidDelete(onWsChange);
+  // Watch wm.ts files — reload commands when project definitions change
+  const watcher = vscode.workspace.createFileSystemWatcher("**/wm.ts");
+  const onWmChange = () => refresh();
+  watcher.onDidChange(onWmChange);
+  watcher.onDidCreate(onWmChange);
+  watcher.onDidDelete(onWmChange);
   context.subscriptions.push(watcher);
 
-  // Also watch .ws/commands/ for command definition changes
-  const cmdWatcher = vscode.workspace.createFileSystemWatcher("**/.ws/commands/**/*.ts");
-  cmdWatcher.onDidChange(onWsChange);
-  cmdWatcher.onDidCreate(onWsChange);
-  cmdWatcher.onDidDelete(onWsChange);
+  // Also watch .wm/commands/ for command definition changes
+  const cmdWatcher = vscode.workspace.createFileSystemWatcher("**/.wm/commands/**/*.ts");
+  cmdWatcher.onDidChange(onWmChange);
+  cmdWatcher.onDidCreate(onWmChange);
+  cmdWatcher.onDidDelete(onWmChange);
   context.subscriptions.push(cmdWatcher);
 
   // Manual refresh command

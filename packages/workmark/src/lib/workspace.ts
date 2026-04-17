@@ -52,8 +52,8 @@ function loadIgnore(root: string): Ignore {
   return ig;
 }
 
-/** Recursively find all ws.ts files, respecting .gitignore rules. */
-function findWsFiles(root: string): string[] {
+/** Recursively find all wm.ts files, respecting .gitignore rules. */
+function findWmFiles(root: string): string[] {
   const ig = loadIgnore(root);
   const results: string[] = [];
 
@@ -62,7 +62,7 @@ function findWsFiles(root: string): string[] {
       const rel = relative(root, join(dir, entry.name));
       if (entry.isDirectory()) {
         if (!ig.ignores(rel + "/")) walk(join(dir, entry.name));
-      } else if (entry.name === "ws.ts") {
+      } else if (entry.name === "wm.ts") {
         results.push(join(dir, entry.name));
       }
     }
@@ -72,15 +72,15 @@ function findWsFiles(root: string): string[] {
   return results;
 }
 
-/** Find the workspace root by walking up from cwd looking for .ws/. */
+/** Find the workspace root by walking up from cwd looking for .wm/. */
 function findRoot(from: string): string {
   let dir = from;
   while (true) {
-    if (existsSync(join(dir, ".ws"))) {
+    if (existsSync(join(dir, ".wm"))) {
       return dir;
     }
     const parent = dirname(dir);
-    if (parent === dir) throw new Error("Could not find workspace root (.ws/ directory)");
+    if (parent === dir) throw new Error("Could not find workspace root (.wm/ directory)");
     dir = parent;
   }
 }
@@ -89,20 +89,20 @@ export async function loadWorkspace(from?: string): Promise<Workspace> {
   const root = from ?? process.env.WORKSPACE_ROOT ?? findRoot(process.cwd());
   const jiti = createJiti(root, jitiOptions());
 
-  // Recursively find all ws.ts files
-  const wsFiles = findWsFiles(root);
+  // Recursively find all wm.ts files
+  const wmFiles = findWmFiles(root);
 
   // Import each and build Project instances
   const projects: Project[] = [];
 
-  for (const wsFile of wsFiles) {
-    const dir = dirname(wsFile);
+  for (const wmFile of wmFiles) {
+    const dir = dirname(wmFile);
     let exported: unknown;
     try {
-      exported = await jiti.import(wsFile);
+      exported = await jiti.import(wmFile);
     } catch (err) {
-      // Log import failures — helps debug bad ws.ts files
-      console.error(`[workspace] Skipping ${wsFile}: ${(err as Error).message}`);
+      // Log import failures — helps debug bad wm.ts files
+      console.error(`[workspace] Skipping ${wmFile}: ${(err as Error).message}`);
       continue;
     }
 

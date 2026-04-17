@@ -7,12 +7,12 @@ export type InputSchema = z.ZodType | Record<string, unknown>;
 /** A record of named Zod schemas or raw JSON Schema property objects. */
 export type SchemaFields = Record<string, z.ZodType | Record<string, unknown>>;
 
-// ---- Project definitions (used in ws.ts files) ----
+// ---- Project definitions (used in wm.ts files) ----
 
 export interface ProjectDef {
   /** Unique identifier. */
   name: string;
-  /** Project directory relative to the ws.ts location. Defaults to ".". */
+  /** Project directory relative to the wm.ts location. Defaults to ".". */
   dir?: string;
   /** Arbitrary string tags for grouping/filtering. */
   tags?: string[];

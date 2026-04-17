@@ -10,7 +10,7 @@ import type { ResolvedCommand } from "./lib/types.js";
 // ---------------------------------------------------------------------------
 
 function printHelp(commands: ResolvedCommand[]): void {
-  console.log("Usage: ws <command> [args...]\n");
+  console.log("Usage: wm <command> [args...]\n");
 
   // Group by group name
   const groups = new Map<string, ResolvedCommand[]>();
@@ -51,7 +51,7 @@ function printHelp(commands: ResolvedCommand[]): void {
 
 function printCommandHelp(cmd: ResolvedCommand): void {
   const pos = cmd.positional.map((p) => `<${p}>`).join(" ");
-  console.log(`Usage: ws ${cmd.name} ${pos}\n`);
+  console.log(`Usage: wm ${cmd.name} ${pos}\n`);
   console.log(cmd.description);
 
   const schema = cmd.inputSchema as {
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   const cmd = cmdMap.get(command);
   if (!cmd) {
     console.error(`Unknown command: ${command}`);
-    console.error(`Run 'ws --help' for available commands.`);
+    console.error(`Run 'wm --help' for available commands.`);
     process.exit(1);
   }
 

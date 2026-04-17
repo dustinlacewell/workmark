@@ -64,10 +64,10 @@ export default function CommandForm({ command }: CommandFormProps) {
       <button
         className="run-button"
         onClick={handleRun}
-        title={`ws ${command.name}`}
+        title={`wm ${command.name}`}
       >
         <span className="run-icon">&#9654;</span>
-        Run (ws {command.name})
+        Run (wm {command.name})
       </button>
     </div>
   );

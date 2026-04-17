@@ -12,10 +12,10 @@ function getTerminal(): vscode.Terminal {
 function getRunner(): string[] {
   const configured = vscode.workspace.getConfiguration("workmark").get<string>("runner");
   if (configured) return configured.split(/\s+/);
-  return ["ws"];
+  return ["wm"];
 }
 
-/** Build a `ws <command> <args>` string and send it to the integrated terminal. */
+/** Build a `wm <command> <args>` string and send it to the integrated terminal. */
 export function runInTerminal(cmd: CommandMeta, args: Record<string, unknown>): void {
   const parts: string[] = [...getRunner(), cmd.name];
   const positionalSet = new Set(cmd.positional);

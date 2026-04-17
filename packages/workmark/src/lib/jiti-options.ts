@@ -7,7 +7,7 @@ const PKG_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SRC_LIB = join(PKG_ROOT, "src", "lib");
 
 /**
- * Build jiti options that let ws.ts / command files import from
+ * Build jiti options that let wm.ts / command files import from
  * `@ldlework/workmark/*` and from workmark's own dependencies (zod, etc.)
  * regardless of how the package is installed or linked.
  */

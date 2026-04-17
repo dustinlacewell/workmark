@@ -65,7 +65,7 @@
         "workmark.runner": {
           "type": "string",
           "default": "",
-          "description": "Command used to invoke ws (e.g. \"pnpm ws\", \"npx ws\"). Leave empty to use \"ws\" directly."
+          "description": "Command used to invoke wm (e.g. \"pnpm wm\", \"npx wm\"). Leave empty to use \"wm\" directly."
         }
       }
     }
