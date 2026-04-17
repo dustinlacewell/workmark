@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-paper text-ink;
+  }
+  html.dark {
+    @apply bg-ink text-paper;
+  }
+  body {
+    @apply antialiased;
+  }
+  code,
+  pre,
+  kbd {
+    @apply font-mono;
+  }
+}

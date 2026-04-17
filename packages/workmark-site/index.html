@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>workmark — one file, three surfaces</title>
+    <meta name="description" content="Define your workspace commands once in TypeScript. Run them from the CLI, a VS Code dashboard, or AI agents — all from the same source." />
+    <script>
+      (() => {
+        const stored = localStorage.getItem("theme");
+        const prefers = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const theme = stored ?? (prefers ? "dark" : "light");
+        if (theme === "dark") document.documentElement.classList.add("dark");
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
