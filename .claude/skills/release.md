@@ -17,12 +17,7 @@ Stage and commit any outstanding work before bumping versions.
 
 ### 2. Bump versions
 
-Update the version in **all** of these locations:
-- `packages/workmark/package.json` — the npm package version
-- `packages/workmark-vsc/package.json` — the extension version
-- `.wm/commands/dev/install-ext.ts` — hardcoded `.vsix` filename reference
-
-Commit the version bump separately from feature work.
+Run `/bump major|minor|patch` (see [bump.md](./bump.md)). The skill handles all three synced locations and commits the result as a version-only commit.
 
 ### 3. Build
 
