@@ -21,7 +21,6 @@ Update the version in **all** of these locations:
 - `packages/workmark/package.json` — the npm package version
 - `packages/workmark-vsc/package.json` — the extension version
 - `.wm/commands/dev/install-ext.ts` — hardcoded `.vsix` filename reference
-- `README.md` — the `code --install-extension workmark-vsc-X.Y.Z.vsix` example
 
 Commit the version bump separately from feature work.
 
