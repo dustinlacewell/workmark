@@ -7,6 +7,12 @@ export type InputSchema = z.ZodType | Record<string, unknown>;
 /** A record of named Zod schemas or raw JSON Schema property objects. */
 export type SchemaFields = Record<string, z.ZodType | Record<string, unknown>>;
 
+/**
+ * A handler's return value. A string is executed as a shell command in the
+ * workspace root; a CallToolResult is forwarded unchanged.
+ */
+export type HandlerReturn = string | CallToolResult;
+
 // ---- Project definitions (used in wm.ts files) ----
 
 export interface ProjectDef {
@@ -48,12 +54,18 @@ export interface IWorkspace {
 
 export type ToolHandler = (
   args: Record<string, unknown>,
-) => Promise<CallToolResult>;
+) => Promise<CallToolResult> | CallToolResult | HandlerReturn | Promise<HandlerReturn>;
 
-export interface StaticCommandDef {
-  name: string;
-  label: string;
-  description: string;
+/** Metadata fields shared by static and dynamic commands. All optional — the
+ * framework derives `name` from the filename, `label` from the name, and
+ * `description` from the leading JSDoc comment when not provided. */
+interface CommandMeta {
+  name?: string;
+  label?: string;
+  description?: string;
+}
+
+export interface StaticCommandDef extends CommandMeta {
   /** Positional arguments (order = key order). */
   args?: SchemaFields;
   /** Named flags (--key value). */
@@ -61,10 +73,7 @@ export interface StaticCommandDef {
   handler: ToolHandler;
 }
 
-export interface DynamicCommandDef {
-  name: string;
-  label: string;
-  description: string;
+export interface DynamicCommandDef extends CommandMeta {
   factory: (workspace: IWorkspace) => {
     args?: SchemaFields;
     flags?: SchemaFields;
@@ -73,6 +82,13 @@ export interface DynamicCommandDef {
 }
 
 export type CommandDef = StaticCommandDef | DynamicCommandDef;
+
+/** After resolution the handler has been wrapped to always return a normalized
+ * CallToolResult — string returns from user handlers are converted to shell
+ * exec calls during wrapping. */
+export type ResolvedHandler = (
+  args: Record<string, unknown>,
+) => Promise<CallToolResult>;
 
 export interface ResolvedCommand {
   name: string;
@@ -83,7 +99,7 @@ export interface ResolvedCommand {
   inputSchema: Record<string, unknown>;
   /** Positional arg names in order. */
   positional: string[];
-  handler: ToolHandler;
+  handler: ResolvedHandler;
   /** Absolute path to the command source file. */
   sourceFile?: string;
 }

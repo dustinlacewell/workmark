@@ -1,20 +1,80 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 import { createJiti } from "jiti";
 import { z } from "zod";
-import type { CommandDef, IWorkspace, ResolvedCommand, SchemaFields, StaticCommandDef } from "./types.js";
+import { execAsync } from "./helpers.js";
+import type {
+  CommandDef,
+  IWorkspace,
+  ResolvedCommand,
+  SchemaFields,
+  StaticCommandDef,
+  ToolHandler,
+} from "./types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { jitiOptions } from "./jiti-options.js";
 
-/** Title-case a folder name: "docker" → "Docker" */
+// --- Metadata derivation -------------------------------------------------
+
+/** Title-case a token: "docker" → "Docker", "new_post" → "New Post". */
 function titleCase(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  return s
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
-function isStatic(def: CommandDef): def is StaticCommandDef {
-  return "handler" in def;
+/** Extract the last JSDoc block appearing before `export default` in a source file. */
+function extractLeadingJsDoc(source: string): string | undefined {
+  const exportIdx = source.indexOf("export default");
+  const before = exportIdx < 0 ? source : source.slice(0, exportIdx);
+  const blocks = [...before.matchAll(/\/\*\*([\s\S]*?)\*\//g)];
+  if (blocks.length === 0) return undefined;
+  const last = blocks[blocks.length - 1][1];
+  return last
+    .split("\n")
+    .map((line) => line.replace(/^\s*\*\s?/, "").trimEnd())
+    .join(" ")
+    .trim() || undefined;
 }
 
-/** Convert a single field (Zod or raw JSON Schema property) to a JSON Schema property. */
+interface DerivedMeta {
+  name: string;
+  label: string;
+  description: string;
+}
+
+function deriveMetadata(def: CommandDef, sourceFile: string): DerivedMeta {
+  const filenameName = basename(sourceFile, extname(sourceFile));
+  const name = def.name ?? filenameName;
+  const label = def.label ?? titleCase(name);
+  const description =
+    def.description ?? extractLeadingJsDoc(readFileSync(sourceFile, "utf-8")) ?? "";
+  return { name, label, description };
+}
+
+// --- Handler wrapping ----------------------------------------------------
+
+function isCallToolResult(value: unknown): value is CallToolResult {
+  return typeof value === "object" && value !== null && "content" in value;
+}
+
+/** Wrap a user handler so that a bare string return is executed as a shell
+ * command in the workspace root. CallToolResult returns pass through. */
+function wrapHandler(raw: ToolHandler, workspace: IWorkspace): (args: Record<string, unknown>) => Promise<CallToolResult> {
+  return async (args) => {
+    const result = await raw(args);
+    if (typeof result === "string") {
+      return execAsync(result, { cwd: workspace.root });
+    }
+    if (isCallToolResult(result)) return result;
+    return { content: [{ type: "text", text: String(result) }] };
+  };
+}
+
+// --- Schema merging ------------------------------------------------------
+
 function fieldToJsonSchema(field: z.ZodType | Record<string, unknown>): Record<string, unknown> {
   if (field instanceof z.ZodType) {
     return z.toJSONSchema(field) as Record<string, unknown>;
@@ -29,7 +89,6 @@ function isRequired(field: z.ZodType | Record<string, unknown>, schema: Record<s
   return true;
 }
 
-/** Merge args + flags into a single JSON Schema object and return positional names. */
 function mergeSchemas(
   args?: SchemaFields,
   flags?: SchemaFields,
@@ -51,35 +110,46 @@ function mergeSchemas(
   collect(args, true);
   collect(flags, false);
 
-  const inputSchema: Record<string, unknown> = {
-    type: "object",
-    properties,
-  };
-  if (required.length > 0) {
-    inputSchema.required = required;
-  }
+  const inputSchema: Record<string, unknown> = { type: "object", properties };
+  if (required.length > 0) inputSchema.required = required;
 
   return { inputSchema, positional };
 }
 
+// --- Resolution ----------------------------------------------------------
+
+function isStatic(def: CommandDef): def is StaticCommandDef {
+  return "handler" in def;
+}
+
 function resolve(def: CommandDef, workspace: IWorkspace, group: string, sourceFile: string): ResolvedCommand {
-  let args: SchemaFields | undefined;
-  let flags: SchemaFields | undefined;
-  let handler;
-
-  if (isStatic(def)) {
-    args = def.args;
-    flags = def.flags;
-    handler = def.handler;
-  } else {
-    const result = def.factory(workspace);
-    args = result.args;
-    flags = result.flags;
-    handler = result.handler;
-  }
-
+  const meta = deriveMetadata(def, sourceFile);
+  const { args, flags, handler } = isStatic(def)
+    ? { args: def.args, flags: def.flags, handler: def.handler }
+    : def.factory(workspace);
   const { inputSchema, positional } = mergeSchemas(args, flags);
-  return { name: def.name, label: def.label, group, description: def.description, inputSchema, positional, handler, sourceFile };
+
+  return {
+    name: meta.name,
+    label: meta.label,
+    group,
+    description: meta.description,
+    inputSchema,
+    positional,
+    handler: wrapHandler(handler, workspace),
+    sourceFile,
+  };
+}
+
+// --- Discovery -----------------------------------------------------------
+
+async function importCommand(jiti: ReturnType<typeof createJiti>, filePath: string): Promise<CommandDef | undefined> {
+  const mod = await jiti.import(filePath) as { default?: CommandDef };
+  return mod.default;
+}
+
+function isCommandFile(name: string): boolean {
+  return name.endsWith(".ts") && !name.endsWith(".d.ts");
 }
 
 export async function loadCommands(workspace: IWorkspace): Promise<ResolvedCommand[]> {
@@ -89,28 +159,21 @@ export async function loadCommands(workspace: IWorkspace): Promise<ResolvedComma
   const jiti = createJiti(commandsDir, jitiOptions());
   const commands: ResolvedCommand[] = [];
 
-  // Ungrouped (root-level) commands first
   for (const entry of readdirSync(commandsDir)) {
     const entryPath = join(commandsDir, entry);
     const stat = statSync(entryPath);
-    if (!stat.isDirectory() && entry.endsWith(".ts") && !entry.endsWith(".d.ts")) {
-      const mod = await jiti.import(entryPath) as { default: CommandDef };
-      commands.push(resolve(mod.default, workspace, "", entryPath));
-    }
-  }
 
-  // Grouped commands (subdirectories)
-  for (const entry of readdirSync(commandsDir)) {
-    const entryPath = join(commandsDir, entry);
-    const stat = statSync(entryPath);
     if (stat.isDirectory()) {
       const group = titleCase(entry);
       for (const file of readdirSync(entryPath)) {
-        if (!file.endsWith(".ts") || file.endsWith(".d.ts")) continue;
+        if (!isCommandFile(file)) continue;
         const filePath = join(entryPath, file);
-        const mod = await jiti.import(filePath) as { default: CommandDef };
-        commands.push(resolve(mod.default, workspace, group, filePath));
+        const def = await importCommand(jiti, filePath);
+        if (def) commands.push(resolve(def, workspace, group, filePath));
       }
+    } else if (isCommandFile(entry)) {
+      const def = await importCommand(jiti, entryPath);
+      if (def) commands.push(resolve(def, workspace, "", entryPath));
     }
   }
 

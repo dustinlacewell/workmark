@@ -16,29 +16,33 @@ pnpm add @ldlework/workmark
 
 ### Write a command
 
-Create commands in `.wm/commands/`. Subdirectories become groups in the CLI, dashboard and MCP server.
+Create commands in `.wm/commands/`. Subdirectories become groups in the CLI, dashboard, and MCP server. The filename becomes the command name, a leading JSDoc becomes the description, and a string return is executed as a shell command in the workspace root.
 
 ```ts
 // .wm/commands/art/sprites.ts
-import { exec } from "@ldlework/workmark/helpers";
+/** Pack sprite sheets from raw assets */
+import { cmd } from "@ldlework/workmark/define";
 import { z } from "zod";
-import type { CommandDef } from "@ldlework/workmark/types";
 
-export default {
-  name: "sprites",
-  label: "Build Sprites",
-  description: "Pack sprite sheets from raw assets",
+export default cmd({
   args: {
     target: z.enum(["all", "characters", "terrain", "ui"]).default("all"),
   },
   flags: {
     watch: z.boolean().default(false),
   },
-  handler: async ({ target, watch }) => {
-    const cmd = `./tools/pack-sprites.sh ${target}${watch ? " --watch" : ""}`;
-    return exec(cmd, { cwd: process.cwd() });
-  },
-} satisfies CommandDef;
+  handler: ({ target, watch }) =>
+    `./tools/pack-sprites.sh ${target}${watch ? " --watch" : ""}`,
+});
+```
+
+For a bare shell alias:
+
+```ts
+// .wm/commands/build.ts
+/** Build the project */
+import { cmd } from "@ldlework/workmark/define";
+export default cmd({ handler: () => "cargo build" });
 ```
 
 ### Run it
@@ -118,25 +122,19 @@ A **dynamic command** receives the workspace and builds its schema from project 
 
 ```ts
 // .wm/commands/deploy.ts
-import { exec } from "@ldlework/workmark/helpers";
+/** Deploy a project */
 import { z } from "zod";
 import type { DynamicCommandDef } from "@ldlework/workmark/types";
 
 export default {
-  name: "deploy",
-  label: "Deploy",
-  description: "Deploy a project",
   factory: (workspace) => {
-    const projects = workspace.withCapability("deploy");
-    const names = projects.map((p) => p.name);
-
+    const names = workspace.withCapability("deploy").map((p) => p.name);
     return {
-      args: {
-        project: z.enum(names as [string, ...string[]]),
-      },
-      handler: async ({ project }) => {
+      args: { project: z.enum(names as [string, ...string[]]) },
+      handler: ({ project }) => {
         const p = workspace.get(project as string);
-        return exec(`./scripts/deploy.sh`, { cwd: p.dir });
+        return { content: [{ type: "text", text: `deploying ${p.name}` }] };
+        // or: return `./scripts/deploy.sh` (with cwd resolved to workspace root by default)
       },
     };
   },
