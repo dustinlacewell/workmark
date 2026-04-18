@@ -12,7 +12,7 @@ export default {
   },
   handler: async (args) => {
     const editor = (args.editor as string) ?? "windsurf";
-    const vsix = join(process.cwd(), "packages", "workmark-vsc", "workmark-vsc-1.1.0.vsix");
+    const vsix = join(process.cwd(), "packages", "workmark-vsc", "workmark-vsc-1.4.0.vsix");
     return exec(`${editor} --install-extension ${vsix} --force`, { cwd: process.cwd() });
   },
 } satisfies StaticCommandDef;

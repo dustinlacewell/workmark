@@ -1,50 +1,49 @@
 ---
 name: bump
-description: Bump version numbers across the three synced locations (workmark package.json, workmark-vsc package.json, install-ext.ts vsix filename) and create a version-only commit. Takes `major`, `minor`, or `patch` as argument.
+description: Bump version numbers across the three synced locations (workmark package.json, workmark-vsc package.json, install-ext.ts vsix filename) in lockstep, and create a version-only commit. Takes `major`, `minor`, or `patch` as argument.
 ---
 
 # Version Bump
 
-Updates workmark's version in all three synced locations and creates a version-only commit. Part of the [release process](./release.md) — runs as step 2.
+Policy: **`workmark` and `workmark-vsc` always share a version.** The VS Code extension is kept compatible with every change to workmark core — never allowed to drift. Whenever core changes, the extension is also updated (either a real code change that supports the new core behavior, or a no-op version bump to stay in lockstep).
+
+This skill enforces that invariant on every bump.
 
 ## Usage
 
 ```
-/bump major    # 1.3.1 → 2.0.0
-/bump minor    # 1.3.1 → 1.4.0
-/bump patch    # 1.3.1 → 1.3.2
+/bump major    # X.Y.Z → (X+1).0.0
+/bump minor    # X.Y.Z → X.(Y+1).0
+/bump patch    # X.Y.Z → X.Y.(Z+1)
 ```
 
-If the user runs `/bump` with no argument, ask which of `major` / `minor` / `patch` they want rather than guessing.
+If the user runs `/bump` with no argument, ask which of `major` / `minor` / `patch` they want — don't guess.
 
 ## Procedure
 
-1. **Read the current version** from `packages/workmark/package.json`. This is the source of truth.
+1. **Read the current version** from `packages/workmark/package.json`. This is the source of truth for "what's the current published version." `workmark-vsc/package.json` may have drifted — treat its value as stale input, not authoritative.
 
-2. **Compute the next version** by semver:
-   - `major`: `X.Y.Z` → `(X+1).0.0`
-   - `minor`: `X.Y.Z` → `X.(Y+1).0`
-   - `patch`: `X.Y.Z` → `X.Y.(Z+1)`
+2. **Compute the next version** by semver from the core package's current version.
 
 3. **Update these three files** with the `Edit` tool:
-   - `packages/workmark/package.json` — `"version": "<OLD>"` → `"version": "<NEW>"`
-   - `packages/workmark-vsc/package.json` — `"version": "<OLD>"` → `"version": "<NEW>"`
-   - `.wm/commands/dev/install-ext.ts` — `workmark-vsc-<OLD>.vsix` → `workmark-vsc-<NEW>.vsix`
+   - `packages/workmark/package.json` — `"version": "<CURRENT_CORE>"` → `"version": "<NEW>"`
+   - `packages/workmark-vsc/package.json` — `"version": "<WHATEVER>"` → `"version": "<NEW>"` (forces the resync regardless of current drift)
+   - `.wm/commands/dev/install-ext.ts` — `workmark-vsc-<ANY>.vsix` → `workmark-vsc-<NEW>.vsix`
 
-4. **Verify**. Grep for the old version string across the three files; if any stragglers remain, the bump is incomplete — fix before committing.
+4. **Verify**. `grep -rn "<NEW>" packages/workmark/package.json packages/workmark-vsc/package.json .wm/commands/dev/install-ext.ts` should find exactly three matches. Anything else signals an incomplete or over-eager edit.
 
 5. **Commit** with the exact message `Bump to v<NEW>`. This must be a version-only commit — no unrelated changes staged.
 
-6. **Report back**: old → new, list of files modified, commit sha.
+6. **Report back**: old core version → new, how vsc was realigned (old vsc version → new, if they differed), and the commit sha.
 
 ## Non-goals
 
 - No build, package, publish, or git tag. This is purely a version-string edit + commit.
 - No release-notes generation.
-- Follow up with `wm release <otp>` to publish the core package; see [release.md](./release.md) for the full workflow (vsce publish, GitHub release, etc.).
+- Follow up with `wm release <otp>` to publish the npm package; see [release.md](./release.md) for the full workflow (vsce publish, GitHub release, etc.).
 
 ## Edge cases
 
 - If the working tree is not clean (`git status --short` non-empty), stop and warn. The commit must be version-only.
-- If the three files disagree on the current version, that's a pre-existing bug — stop and report the mismatch rather than guessing which one is authoritative.
 - If the user passes something other than `major` / `minor` / `patch`, reject with a clear message.
+- **Version drift is not an error.** If the three files disagree on the current version, that's the exact state this skill resolves — drive all three to `<NEW>` derived from the core package, and mention the realignment in the report.
