@@ -1,12 +1,12 @@
-import { Header } from "./components/Header";
-import { Hero } from "./components/Hero";
-import { Pain } from "./components/Pain";
-import { Pitch } from "./components/Pitch";
-import { Why } from "./components/Why";
-import { Scaling } from "./components/Scaling";
-import { Install } from "./components/Install";
+import { Header } from "../components/Header";
+import { Hero } from "../components/Hero";
+import { Pain } from "../components/Pain";
+import { Pitch } from "../components/Pitch";
+import { Why } from "../components/Why";
+import { Scaling } from "../components/Scaling";
+import { Install } from "../components/Install";
 
-export default function App() {
+export function Home() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />

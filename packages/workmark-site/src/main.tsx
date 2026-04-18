@@ -1,5 +1,11 @@
-import { ViteReactSSG } from "vite-react-ssg/single-page";
-import App from "./App";
+import { ViteReactSSG } from "vite-react-ssg";
+import { Home } from "./pages/Home";
+import { Docs } from "./pages/Docs";
 import "./index.css";
 
-export const createRoot = ViteReactSSG(<App />);
+export const createRoot = ViteReactSSG({
+  routes: [
+    { path: "/", element: <Home /> },
+    { path: "/docs", element: <Docs /> },
+  ],
+});

@@ -9,6 +9,9 @@ export function Header() {
           <span className="opacity-60">·workmark</span>
         </a>
         <nav className="flex items-center gap-3 text-sm">
+          <a href="/docs" className="opacity-70 hover:opacity-100 transition-opacity">
+            Docs
+          </a>
           <a
             href="https://github.com/dustinlacewell/workmark"
             target="_blank"
