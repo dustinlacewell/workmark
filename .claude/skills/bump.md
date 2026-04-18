@@ -1,6 +1,6 @@
 ---
 name: bump
-description: Bump version numbers across the three synced locations (workmark package.json, workmark-vsc package.json, install-ext.ts vsix filename) in lockstep, and create a version-only commit. Takes `major`, `minor`, or `patch` as argument.
+description: Bump both workmark and workmark-vsc package.json versions in lockstep, and create a version-only commit. Takes `major`, `minor`, or `patch` as argument.
 ---
 
 # Version Bump
@@ -25,12 +25,11 @@ If the user runs `/bump` with no argument, ask which of `major` / `minor` / `pat
 
 2. **Compute the next version** by semver from the core package's current version.
 
-3. **Update these three files** with the `Edit` tool:
+3. **Update these two files** with the `Edit` tool:
    - `packages/workmark/package.json` — `"version": "<CURRENT_CORE>"` → `"version": "<NEW>"`
    - `packages/workmark-vsc/package.json` — `"version": "<WHATEVER>"` → `"version": "<NEW>"` (forces the resync regardless of current drift)
-   - `.wm/commands/dev/install-ext.ts` — `workmark-vsc-<ANY>.vsix` → `workmark-vsc-<NEW>.vsix`
 
-4. **Verify**. `grep -rn "<NEW>" packages/workmark/package.json packages/workmark-vsc/package.json .wm/commands/dev/install-ext.ts` should find exactly three matches. Anything else signals an incomplete or over-eager edit.
+4. **Verify**. `grep -n "<NEW>" packages/workmark/package.json packages/workmark-vsc/package.json` should find exactly two matches. Anything else signals an incomplete or over-eager edit.
 
 5. **Commit** with the exact message `Bump to v<NEW>`. This must be a version-only commit — no unrelated changes staged.
 
