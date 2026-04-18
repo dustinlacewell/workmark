@@ -1,21 +1,17 @@
-import { exec } from "@ldlework/workmark/helpers";
+import { execAsync } from "@ldlework/workmark/helpers";
 import { z } from "zod";
-import type { StaticCommandDef } from "@ldlework/workmark/types";
+import type { DynamicCommandDef } from "@ldlework/workmark/types";
 
 export default {
   name: "build",
   label: "Build",
   description: "Build all packages or a specific package",
-  args: {
-    package: z.enum(["all", "workmark", "workmark-vsc"]).default("all"),
-  },
-  handler: async (args) => {
-    const pkg = (args.package as string) ?? "all";
-    const cwd = process.cwd();
-    if (pkg === "all") {
-      return exec("pnpm build", { cwd });
-    }
-    const dir = pkg === "workmark" ? "packages/workmark" : "packages/workmark-vsc";
-    return exec("pnpm build", { cwd: `${cwd}/${dir}` });
-  },
-} satisfies StaticCommandDef;
+  factory: (workspace) => ({
+    args: { package: z.enum(["all", "workmark", "workmark-vsc"]).default("all") },
+    handler: (args) => {
+      const pkg = (args.package as string) ?? "all";
+      const cwd = pkg === "all" ? workspace.root : workspace.get(pkg).dir;
+      return execAsync("pnpm build", { cwd });
+    },
+  }),
+} satisfies DynamicCommandDef;
