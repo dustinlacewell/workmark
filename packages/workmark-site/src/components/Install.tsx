@@ -13,7 +13,7 @@ export function Install() {
           <Step
             n={1}
             title="Install"
-            code={`pnpm add @ldlework/workmark`}
+            code={`pnpm add -D @ldlework/workmark`}
           />
           <Step
             n={2}
@@ -21,12 +21,15 @@ export function Install() {
             file=".wm/commands/build.ts"
             code={`/** Build the project */
 import { cmd } from "@ldlework/workmark/define";
-export default cmd({ handler: () => "cargo build" });`}
+
+export default cmd({
+  handler: (_, { sh }) => sh("cargo build"),
+});`}
           />
           <Step
             n={3}
             title="Run it"
-            code={`wm build             # CLI
+            code={`wm build              # CLI
 # or click it in the VS Code dashboard
 # or let Claude call it as an MCP tool`}
           />
@@ -34,12 +37,10 @@ export default cmd({ handler: () => "cargo build" });`}
 
         <div className="mt-14 text-center">
           <a
-            href="https://www.npmjs.com/package/@ldlework/workmark"
-            target="_blank"
-            rel="noreferrer"
+            href="/docs"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-accent-deep/40 dark:border-accent/40 text-accent-deep dark:text-accent hover:bg-accent-deep/5 dark:hover:bg-accent/5 transition-colors"
           >
-            Read the README →
+            Read the docs →
           </a>
         </div>
       </div>

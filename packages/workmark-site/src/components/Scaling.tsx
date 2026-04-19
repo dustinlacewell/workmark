@@ -9,41 +9,65 @@ export function Scaling() {
           One command, many projects.
         </h2>
         <p className="mt-4 text-lg opacity-70 leading-relaxed max-w-2xl">
-          Declare projects with a <code className="font-mono text-sm">wm.ts</code> file.
-          Commands can enumerate them and build arg choices from what's present.
+          Declare a <code className="font-mono text-sm">trait</code> once with
+          a zod schema. Projects fulfill it with typed data. Commands ask for
+          the trait and get per-project data, typed, in the handler.
         </p>
 
-        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <CodePanel label="packages/api/wm.ts">
-{`import { defineProject } from "@ldlework/workmark/define";
+        <div className="mt-10">
+          <CodePanel label=".wm/traits/docker.ts">
+{`import { z } from "zod";
+import { defineTrait } from "@ldlework/workmark/define";
 
-export default defineProject({
-  name: "api",
-  tags: ["backend"],
-  capabilities: { deploy: true },
+export const docker = defineTrait({
+  name: "docker",
+  schema: z.object({
+    composeFile: z.string(),
+    service: z.string(),
+  }),
 });`}
           </CodePanel>
-          <CodePanel label="packages/web/wm.ts">
-{`import { defineProject } from "@ldlework/workmark/define";
+        </div>
 
-export default defineProject({
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <CodePanel label="sites/api/wm.ts">
+{`defineProject({
+  name: "api",
+  has: {
+    docker: { composeFile: "docker-compose.yml", service: "api" },
+  },
+});`}
+          </CodePanel>
+          <CodePanel label="sites/web/wm.ts">
+{`defineProject({
   name: "web",
-  tags: ["frontend"],
-  capabilities: { deploy: true },
+  has: {
+    docker: { composeFile: "docker-compose.yml", service: "web" },
+  },
 });`}
           </CodePanel>
         </div>
 
         <p className="mt-8 opacity-70">
-          Now a single <code className="font-mono text-sm">deploy</code> command
-          discovers both projects and turns their names into a typed enum — in
-          the CLI, the form, and the AI tool schema.
+          Now one command, and the project enum in CLI, VS Code, and the
+          MCP tool schema is whichever projects fulfill <code className="font-mono text-sm">docker</code>.
         </p>
 
-        <div className="mt-4">
-          <CodePanel label="prompt">
-{`wm deploy api
-wm deploy web`}
+        <div className="mt-6">
+          <CodePanel label=".wm/commands/up.ts">
+{`export default cmd({
+  needs: [docker],
+  handler: (_, { traits, sh }) =>
+    sh(\`docker compose -f \${traits.docker.composeFile} up -d \${traits.docker.service}\`),
+});`}
+          </CodePanel>
+        </div>
+
+        <div className="mt-6">
+          <CodePanel label="terminal">
+{`wm up api
+wm up api web        # both in parallel
+wm up --help         # project: [api, web]`}
           </CodePanel>
         </div>
       </div>

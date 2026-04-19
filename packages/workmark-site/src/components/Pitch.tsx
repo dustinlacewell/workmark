@@ -9,8 +9,8 @@ export function Pitch() {
           One file. Three surfaces.
         </h2>
         <p className="mt-4 text-lg opacity-70 leading-relaxed text-center max-w-2xl mx-auto">
-          Write a command once in TypeScript. workmark renders it as a CLI, a
-          VS Code form, and an AI-invocable tool — all from the same source.
+          Write a command once in TypeScript. Workmark renders it as a CLI, a
+          VS Code form, and an AI-invocable tool — from the same definition, fully typed.
         </p>
 
         <div className="mt-12 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-8 items-start">
@@ -29,19 +29,16 @@ export function Pitch() {
 
 function SourceFile() {
   return (
-    <Panel label=".wm/commands/deploy.ts">
+    <Panel label=".wm/commands/build.ts">
       <pre className="text-xs leading-relaxed">
-        <Line><Kw>/**</Kw> <Str>Deploy to an environment</Str> <Kw>*/</Kw></Line>
+        <Line><Kw>/**</Kw> <Str>Build one or more packages.</Str> <Kw>*/</Kw></Line>
         <Line><Kw>import</Kw> {"{ cmd }"} <Kw>from</Kw> <Str>"@ldlework/workmark/define"</Str>;</Line>
-        <Line><Kw>import</Kw> {"{ z }"} <Kw>from</Kw> <Str>"zod"</Str>;</Line>
+        <Line><Kw>import</Kw> {"{ buildable }"} <Kw>from</Kw> <Str>"../traits/buildable.js"</Str>;</Line>
         <Line />
         <Line><Kw>export default</Kw> <Fn>cmd</Fn>({"{"}</Line>
-        <Line indent={2}>args: {"{"}</Line>
-        <Line indent={4}>env: <Fn>z</Fn>.<Fn>enum</Fn>([<Str>"staging"</Str>, <Str>"prod"</Str>])</Line>
-        <Line indent={4}>{"   "}.<Fn>default</Fn>(<Str>"staging"</Str>),</Line>
-        <Line indent={2}>{"}"},</Line>
-        <Line indent={2}>handler: ({"{ env }"}) =&gt;</Line>
-        <Line indent={4}>`./scripts/deploy.sh ${"${env}"}`,</Line>
+        <Line indent={2}>needs: [buildable],</Line>
+        <Line indent={2}>handler: (_, {"{ traits, sh }"}) =&gt;</Line>
+        <Line indent={4}><Fn>sh</Fn>(traits.buildable.command),</Line>
         <Line>{"}"});</Line>
       </pre>
     </Panel>
@@ -71,9 +68,11 @@ function TerminalSurface() {
   return (
     <Panel label="terminal">
       <pre className="text-xs leading-relaxed">
-        <Line><Dim>$</Dim> wm deploy prod</Line>
-        <Line><Dim>deploying to prod...</Dim></Line>
-        <Line><Dim>done.</Dim></Line>
+        <Line><Dim>$</Dim> wm build api web</Line>
+        <Line><Dim>--- api ---</Dim></Line>
+        <Line><Dim>compiled in 1.2s</Dim></Line>
+        <Line><Dim>--- web ---</Dim></Line>
+        <Line><Dim>compiled in 0.9s</Dim></Line>
       </pre>
     </Panel>
   );
@@ -84,13 +83,13 @@ function FormSurface() {
     <Panel label="VS Code">
       <div className="text-xs space-y-2">
         <div className="flex items-center gap-2">
-          <span className="opacity-60">env</span>
+          <span className="opacity-60">project</span>
           <span className="flex-1 px-2 py-1 rounded border border-paper-line dark:border-ink-line bg-paper dark:bg-ink">
-            prod <span className="opacity-40 float-right">▾</span>
+            api, web <span className="opacity-40 float-right">▾</span>
           </span>
         </div>
         <button className="w-full mt-1 px-3 py-1.5 rounded bg-accent-deep/80 dark:bg-accent/20 text-paper dark:text-accent border border-accent-deep dark:border-accent/50 text-left">
-          <span className="opacity-80">▶</span>&nbsp; Run (wm deploy)
+          <span className="opacity-80">▶</span>&nbsp; Run (wm build)
         </button>
       </div>
     </Panel>
@@ -101,10 +100,10 @@ function AgentSurface() {
   return (
     <Panel label="AI agent">
       <pre className="text-xs leading-relaxed">
-        <Line><Dim>&gt;</Dim> <Kw>use_tool</Kw>(<Str>"deploy"</Str>,</Line>
-        <Line indent={4}>{"{"} env: <Str>"staging"</Str> {"}"}</Line>
+        <Line><Dim>&gt;</Dim> <Kw>use_tool</Kw>(<Str>"build"</Str>,</Line>
+        <Line indent={4}>{"{"} project: [<Str>"api"</Str>] {"}"}</Line>
         <Line>)</Line>
-        <Line><Dim>→ deploying to staging...</Dim></Line>
+        <Line><Dim>→ compiled in 1.2s</Dim></Line>
       </pre>
     </Panel>
   );

@@ -11,12 +11,12 @@ export function Why() {
 
         <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-6">
           <Pillar
-            title="Typed, end-to-end"
-            body="Declare args with zod. You get runtime validation, CLI help, VS Code form fields, and MCP tool schemas — automatic."
+            title="Typed end-to-end"
+            body="Traits carry zod schemas. Handlers destructure typed data from ctx. The CLI args, VS Code form fields, and MCP tool input schemas are all generated from the same declarations — no casts, no drift."
           />
           <Pillar
             title="AI-native"
-            body="Every command is an MCP tool. AI assistants discover and invoke your workspace the same way you do — no separate server to maintain."
+            body="Every command is an MCP tool. AI assistants discover and invoke your workspace the same way you do, with the same validated inputs. No server to run, no schema to maintain twice."
           />
           <Pillar
             title="Zero SaaS"
