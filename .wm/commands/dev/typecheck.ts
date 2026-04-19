@@ -1,11 +1,9 @@
-import { execAsync } from "@ldlework/workmark/helpers";
-import type { DynamicCommandDef } from "@ldlework/workmark/types";
+import { cmd } from "@ldlework/workmark/define";
+import { typecheckable } from "../../traits/typecheckable.js";
 
-export default {
-  name: "typecheck",
-  label: "Type Check",
-  description: "Run TypeScript type checking across all packages",
-  factory: (workspace) => ({
-    handler: () => execAsync("pnpm typecheck", { cwd: workspace.root }),
-  }),
-} satisfies DynamicCommandDef;
+/** Typecheck one, many, or all packages. */
+export default cmd({
+  needs: [typecheckable],
+  select: "one-or-many",
+  handler: (_, { traits, sh }) => sh(traits.typecheckable.command, { timeout: traits.typecheckable.timeout }),
+});

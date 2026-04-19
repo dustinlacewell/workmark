@@ -1,17 +1,9 @@
-import { execAsync } from "@ldlework/workmark/helpers";
-import { z } from "zod";
-import type { DynamicCommandDef } from "@ldlework/workmark/types";
+import { cmd } from "@ldlework/workmark/define";
+import { buildable } from "../../traits/buildable.js";
 
-export default {
-  name: "build",
-  label: "Build",
-  description: "Build all packages or a specific package",
-  factory: (workspace) => ({
-    args: { package: z.enum(["all", "workmark", "workmark-vsc"]).default("all") },
-    handler: (args) => {
-      const pkg = (args.package as string) ?? "all";
-      const cwd = pkg === "all" ? workspace.root : workspace.get(pkg).dir;
-      return execAsync("pnpm build", { cwd });
-    },
-  }),
-} satisfies DynamicCommandDef;
+/** Build one, many, or all packages. */
+export default cmd({
+  needs: [buildable],
+  select: "one-or-many",
+  handler: (_, { traits, sh }) => sh(traits.buildable.command, { timeout: traits.buildable.timeout }),
+});

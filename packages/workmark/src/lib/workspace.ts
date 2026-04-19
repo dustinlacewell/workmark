@@ -2,22 +2,25 @@ import { dirname, join, relative } from "node:path";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createJiti } from "jiti";
 import ignore, { type Ignore } from "ignore";
-import { Project } from "./project.js";
-import type { IProject, IWorkspace, ProjectDef } from "./types.js";
+import { Project, validateHas } from "./project.js";
+import type { IProject, IWorkspace, ProjectDef, Trait } from "./types.js";
+import { TraitRegistry, installRegistry, uninstallRegistry } from "./registry.js";
 import { jitiOptions } from "./jiti-options.js";
 
 export class Workspace implements IWorkspace {
   readonly root: string;
   readonly projects: readonly IProject[];
+  /** Trait registry populated during load. Exposed for command-load phase. */
+  readonly traits: TraitRegistry;
 
   private readonly byName: Map<string, IProject>;
 
-  constructor(root: string, projects: IProject[]) {
+  constructor(root: string, projects: IProject[], traits: TraitRegistry) {
     this.root = root;
-    this.projects = Object.freeze(projects);
+    this.projects = Object.freeze([...projects]);
+    this.traits = traits;
     this.byName = new Map(projects.map((p) => [p.name, p]));
 
-    // Validate unique names
     if (this.byName.size !== projects.length) {
       const seen = new Set<string>();
       for (const p of projects) {
@@ -33,8 +36,9 @@ export class Workspace implements IWorkspace {
     return p;
   }
 
-  withCapability(cap: string): IProject[] {
-    return this.projects.filter((p) => p.has(cap));
+  withTrait(trait: Trait | string): IProject[] {
+    const name = typeof trait === "string" ? trait : trait.name;
+    return this.projects.filter((p) => p.hasTrait(name));
   }
 
   withTag(tag: string): IProject[] {
@@ -42,7 +46,8 @@ export class Workspace implements IWorkspace {
   }
 }
 
-/** Build an Ignore instance from .gitignore (if present) + hardcoded defaults. */
+// ---- Discovery ---------------------------------------------------------
+
 function loadIgnore(root: string): Ignore {
   const ig = ignore().add(["node_modules", "dist"]);
   const gitignorePath = join(root, ".gitignore");
@@ -52,7 +57,6 @@ function loadIgnore(root: string): Ignore {
   return ig;
 }
 
-/** Recursively find all wm.ts files, respecting .gitignore rules. */
 function findWmFiles(root: string): string[] {
   const ig = loadIgnore(root);
   const results: string[] = [];
@@ -72,53 +76,86 @@ function findWmFiles(root: string): string[] {
   return results;
 }
 
-/** Find the workspace root by walking up from cwd looking for .wm/. */
+function findTraitFiles(root: string): string[] {
+  const traitsDir = join(root, ".wm", "traits");
+  if (!existsSync(traitsDir)) return [];
+  const out: string[] = [];
+  function walk(dir: string): void {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
+        out.push(full);
+      }
+    }
+  }
+  walk(traitsDir);
+  return out;
+}
+
 function findRoot(from: string): string {
   let dir = from;
   while (true) {
-    if (existsSync(join(dir, ".wm"))) {
-      return dir;
-    }
+    if (existsSync(join(dir, ".wm"))) return dir;
     const parent = dirname(dir);
     if (parent === dir) throw new Error("Could not find workspace root (.wm/ directory)");
     dir = parent;
   }
 }
 
-export async function loadWorkspace(from?: string): Promise<Workspace> {
-  const root = from ?? process.env.WORKSPACE_ROOT ?? findRoot(process.cwd());
-  const jiti = createJiti(root, jitiOptions());
+// ---- Load --------------------------------------------------------------
 
-  // Recursively find all wm.ts files
-  const wmFiles = findWmFiles(root);
+async function loadTraits(root: string, jiti: ReturnType<typeof createJiti>): Promise<TraitRegistry> {
+  const registry = new TraitRegistry();
+  installRegistry(registry);
+  for (const file of findTraitFiles(root)) {
+    try {
+      await jiti.import(file);
+    } catch (err) {
+      uninstallRegistry();
+      throw new Error(`Failed to import trait file ${file}: ${(err as Error).message}`);
+    }
+  }
+  // Registry stays installed — command loading re-executes trait files
+  // under jiti moduleCache:false, and those defineTrait calls need it.
+  return registry;
+}
 
-  // Import each and build Project instances
+async function loadProjects(
+  root: string,
+  jiti: ReturnType<typeof createJiti>,
+  registry: TraitRegistry,
+): Promise<Project[]> {
   const projects: Project[] = [];
-
-  for (const wmFile of wmFiles) {
+  for (const wmFile of findWmFiles(root)) {
     const dir = dirname(wmFile);
     let exported: unknown;
     try {
       exported = await jiti.import(wmFile);
     } catch (err) {
-      // Log import failures — helps debug bad wm.ts files
-      console.error(`[workspace] Skipping ${wmFile}: ${(err as Error).message}`);
-      continue;
+      throw new Error(`Failed to import ${wmFile}: ${(err as Error).message}`);
     }
-
-    // jiti may return { default: ... } when interopDefault doesn't fully unwrap
     if (exported && typeof exported === "object" && "default" in (exported as Record<string, unknown>)) {
       exported = (exported as Record<string, unknown>).default;
     }
-
     const items: unknown[] = Array.isArray(exported) ? exported : [exported];
-
     for (const item of items) {
       if (item && typeof item === "object" && typeof (item as Record<string, unknown>).name === "string") {
-        projects.push(new Project(item as ProjectDef, dir));
+        const def = item as ProjectDef;
+        const traitData = validateHas(def, registry, wmFile);
+        projects.push(new Project(def, dir, traitData));
       }
     }
   }
+  return projects;
+}
 
-  return new Workspace(root, projects);
+export async function loadWorkspace(from?: string): Promise<Workspace> {
+  const root = from ?? process.env.WORKSPACE_ROOT ?? findRoot(process.cwd());
+  const jiti = createJiti(root, jitiOptions());
+
+  const registry = await loadTraits(root, jiti);
+  const projects = await loadProjects(root, jiti, registry);
+
+  return new Workspace(root, projects, registry);
 }

@@ -3,12 +3,10 @@
  *
  *   1. tokenize  — turn argv into a structured token stream (flags vs. positionals)
  *   2. dispatch  — bind tokens to parameter names using positional order and
- *                  schema-declared array flags (repeats accumulate)
+ *                  schema-declared array fields (repeats/multiples accumulate)
  *   3. coerce    — convert raw strings to JSON Schema-declared types
  *
- * Each phase is independently testable and has one job. Coercion is driven by
- * the command's JSON Schema rather than heuristics, so `z.string()` fields
- * always stay strings and `z.array(...)` fields always come out as arrays.
+ * Each phase is independently testable and has one job.
  */
 
 type Token =
@@ -19,6 +17,7 @@ type SchemaProp = {
   type?: string;
   items?: { type?: string; enum?: unknown[] };
   enum?: unknown[];
+  anyOf?: unknown[];
 };
 
 type SchemaObject = {
@@ -57,7 +56,16 @@ function tokenize(argv: string[]): Token[] {
 // --- 2. dispatch ---------------------------------------------------------
 
 function isArrayField(schema: SchemaObject, name: string): boolean {
-  return schema.properties?.[name]?.type === "array";
+  const prop = schema.properties?.[name];
+  if (!prop) return false;
+  if (prop.type === "array") return true;
+  // union: accept array as one option
+  if (Array.isArray(prop.anyOf)) {
+    for (const alt of prop.anyOf) {
+      if ((alt as SchemaProp).type === "array") return true;
+    }
+  }
+  return false;
 }
 
 function appendToArray(out: Record<string, unknown>, key: string, value: string): void {
@@ -82,6 +90,19 @@ function assignFlag(
   out[key] = value;
 }
 
+function assignPositional(
+  out: Record<string, unknown>,
+  schema: SchemaObject,
+  key: string,
+  value: string,
+): void {
+  if (isArrayField(schema, key)) {
+    appendToArray(out, key, value);
+    return;
+  }
+  out[key] = value;
+}
+
 function dispatch(
   tokens: Token[],
   positional: string[],
@@ -93,10 +114,16 @@ function dispatch(
   for (const tok of tokens) {
     if (tok.kind === "flag") {
       assignFlag(out, schema, tok.key, tok.value);
-    } else if (posIdx < positional.length) {
-      out[positional[posIdx]] = tok.value;
-      posIdx++;
+      continue;
     }
+
+    if (posIdx >= positional.length) continue;
+
+    const currentKey = positional[posIdx];
+    assignPositional(out, schema, currentKey, tok.value);
+
+    // If the current positional is array-valued, stay on it; else advance.
+    if (!isArrayField(schema, currentKey)) posIdx++;
   }
   return out;
 }
@@ -123,12 +150,22 @@ function coerceField(value: unknown, prop: SchemaProp | undefined): unknown {
   if (prop === undefined) return value;
   if (typeof value === "boolean") return value;
 
-  if (prop.type === "array") {
+  if (prop.type === "array" || (Array.isArray(prop.anyOf) && prop.anyOf.some((a) => (a as SchemaProp).type === "array"))) {
     const items = Array.isArray(value) ? value : [value];
-    return items.map((item) => coerceScalar(String(item), prop.items?.type));
+    const innerType = prop.items?.type ?? extractArrayItemType(prop);
+    return items.map((item) => coerceScalar(String(item), innerType));
   }
 
   return coerceScalar(String(value), prop.type);
+}
+
+function extractArrayItemType(prop: SchemaProp): string | undefined {
+  if (!Array.isArray(prop.anyOf)) return undefined;
+  for (const alt of prop.anyOf) {
+    const a = alt as SchemaProp;
+    if (a.type === "array") return a.items?.type;
+  }
+  return undefined;
 }
 
 function coerce(

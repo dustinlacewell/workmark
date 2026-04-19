@@ -1,43 +1,58 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
 
-/** An input schema: either a Zod schema (converted automatically) or raw JSON Schema. */
-export type InputSchema = z.ZodType | Record<string, unknown>;
+// ---- Traits ------------------------------------------------------------
 
-/** A record of named Zod schemas or raw JSON Schema property objects. */
-export type SchemaFields = Record<string, z.ZodType | Record<string, unknown>>;
+/** A named, schema-backed contract that projects fulfill and commands require.
+ *
+ * Identity is `name`. Created via `defineTrait`; the returned object carries a
+ * phantom type so `cmd({ needs: [docker] })` can infer trait-data types into
+ * the handler's `ctx.traits`. */
+export interface Trait<N extends string = string, T = unknown> {
+  readonly name: N;
+  readonly schema: z.ZodType;
+  readonly description?: string;
+  /** Phantom for inference. Never accessed at runtime. */
+  readonly __brand?: readonly ["trait", N, T];
+}
 
-/**
- * A handler's return value. A string is executed as a shell command in the
- * workspace root; a CallToolResult is forwarded unchanged.
- */
-export type HandlerReturn = string | CallToolResult;
+// ---- Schema fields ------------------------------------------------------
 
-// ---- Project definitions (used in wm.ts files) ----
+/** A field schema: a zod type or raw JSON Schema object. */
+export type SchemaField = z.ZodType | Record<string, unknown>;
+
+/** A record of named field schemas. */
+export type SchemaFields = Record<string, SchemaField>;
+
+// ---- Projects -----------------------------------------------------------
 
 export interface ProjectDef {
   /** Unique identifier. */
   name: string;
   /** Project directory relative to the wm.ts location. Defaults to ".". */
   dir?: string;
-  /** Arbitrary string tags for grouping/filtering. */
+  /** Free-form labels. Filter only — no handler injection. */
   tags?: string[];
   /** Named directories, resolved relative to the project dir. */
   paths?: Record<string, string>;
-  /** Capabilities this project supports. `true` = use convention, object = custom config. */
-  capabilities?: Record<string, true | Record<string, unknown>>;
+  /** Trait fulfillments. Keys are trait names; values are validated against
+   * the trait schema at load time. */
+  has?: Record<string, unknown>;
+  /** Optional human-readable description. */
+  description?: string;
 }
-
-// ---- Runtime project/workspace interfaces ----
 
 export interface IProject {
   readonly name: string;
   readonly dir: string;
   readonly tags: readonly string[];
-  readonly capabilities: Readonly<Record<string, true | Record<string, unknown>>>;
+  readonly description?: string;
 
-  has(capability: string): boolean;
-  capability<T = true | Record<string, unknown>>(name: string): T;
+  /** Check whether this project fulfills a trait (by object or name). */
+  hasTrait(trait: Trait | string): boolean;
+  /** Get the parsed trait data. Throws if the project does not fulfill it. */
+  trait<T>(trait: Trait<string, T>): T;
+  /** Resolve a named path relative to this project's directory. */
   path(name: string): string;
 }
 
@@ -46,60 +61,78 @@ export interface IWorkspace {
   readonly projects: readonly IProject[];
 
   get(name: string): IProject;
-  withCapability(cap: string): IProject[];
+  withTrait(trait: Trait | string): IProject[];
   withTag(tag: string): IProject[];
 }
 
-// ---- Command definitions ----
+// ---- Commands -----------------------------------------------------------
 
-export type ToolHandler = (
-  args: Record<string, unknown>,
-) => Promise<CallToolResult> | CallToolResult | HandlerReturn | Promise<HandlerReturn>;
+/** How many projects a command runs against. */
+export type SelectMode = "one" | "one-or-many" | "all";
 
-/** Metadata fields shared by static and dynamic commands. All optional — the
- * framework derives `name` from the filename, `label` from the name, and
- * `description` from the leading JSDoc comment when not provided. */
-interface CommandMeta {
-  name?: string;
-  label?: string;
-  description?: string;
+/** Framework-standard context passed to every handler. */
+export interface BaseCtx {
+  workspace: IWorkspace;
+  /** Run a shell command in the resolved cwd (project.dir when needs is set, else workspace.root). */
+  sh: (cmd: string, opts?: { timeout?: number }) => Promise<CallToolResult>;
+  /** Run a shell command with explicit options. */
+  exec: (cmd: string, opts: { cwd: string; timeout?: number }) => Promise<CallToolResult>;
+  ok: (data: unknown) => CallToolResult;
+  fail: (error: unknown) => CallToolResult;
 }
 
-export interface StaticCommandDef extends CommandMeta {
-  /** Positional arguments (order = key order). */
-  args?: SchemaFields;
-  /** Named flags (--key value). */
-  flags?: SchemaFields;
-  handler: ToolHandler;
+/** Context for commands with `needs`. Adds `project` and `traits`. */
+export interface NeedsCtx<Traits extends Record<string, unknown>> extends BaseCtx {
+  project: IProject;
+  traits: Traits;
 }
 
-export interface DynamicCommandDef extends CommandMeta {
-  factory: (workspace: IWorkspace) => {
-    args?: SchemaFields;
-    flags?: SchemaFields;
-    handler: ToolHandler;
-  };
-}
+export type HandlerReturn = CallToolResult;
 
-export type CommandDef = StaticCommandDef | DynamicCommandDef;
-
-/** After resolution the handler has been wrapped to always return a normalized
- * CallToolResult — string returns from user handlers are converted to shell
- * exec calls during wrapping. */
-export type ResolvedHandler = (
-  args: Record<string, unknown>,
-) => Promise<CallToolResult>;
-
+/** A resolved, runnable command — what the framework holds after load. */
 export interface ResolvedCommand {
   name: string;
   label: string;
   group: string;
   description: string;
-  /** Merged JSON Schema from args + flags. */
   inputSchema: Record<string, unknown>;
-  /** Positional arg names in order. */
   positional: string[];
   handler: ResolvedHandler;
-  /** Absolute path to the command source file. */
   sourceFile?: string;
+  select: SelectMode;
+  /** Names of traits this command requires. Empty array = no needs. */
+  needs: string[];
+}
+
+export type ResolvedHandler = (
+  args: Record<string, unknown>,
+) => Promise<CallToolResult>;
+
+// ---- Result aggregation -------------------------------------------------
+
+/** Per-project result shape for multi-target commands. */
+export interface ProjectResult {
+  project: string;
+  ok: boolean;
+  output?: string;
+  error?: string;
+}
+
+/** Optional reducer for custom multi-target aggregation. */
+export type ReduceFn = (results: ProjectResult[]) => HandlerReturn | Promise<HandlerReturn>;
+
+export interface RunOptions {
+  order?: "parallel" | "serial";
+  concurrency?: number;
+  stopOnFailure?: boolean;
+  reduce?: ReduceFn;
+}
+
+// ---- fromWorkspace marker ----------------------------------------------
+
+/** Internal marker stamped on schemas produced by `fromWorkspace`. */
+export const FROM_WORKSPACE = Symbol.for("workmark.fromWorkspace");
+
+export interface FromWorkspaceResolver {
+  (ws: IWorkspace): z.ZodType;
 }

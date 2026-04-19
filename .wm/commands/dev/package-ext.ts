@@ -1,14 +1,9 @@
-import { execAsync } from "@ldlework/workmark/helpers";
-import type { DynamicCommandDef } from "@ldlework/workmark/types";
+import { cmd } from "@ldlework/workmark/define";
+import { vscodeExtension } from "../../traits/vscodeExtension.js";
 
-export default {
-  name: "package-ext",
-  label: "Package Extension",
-  description: "Package the VS Code extension into a .vsix file",
-  factory: (workspace) => {
-    const vsc = workspace.get("workmark-vsc");
-    return {
-      handler: () => execAsync("npx @vscode/vsce package --no-dependencies", { cwd: vsc.dir }),
-    };
-  },
-} satisfies DynamicCommandDef;
+/** Package the VS Code extension into a .vsix file. */
+export default cmd({
+  needs: [vscodeExtension],
+  select: "one",
+  handler: (_, { sh }) => sh("npx @vscode/vsce package --no-dependencies"),
+});
