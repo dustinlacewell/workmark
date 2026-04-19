@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { Header } from "../components/Header";
+import { Code as Highlighted } from "../components/Code";
+import type { Lang } from "../lib/highlight";
 
 const SECTIONS = [
   { id: "model", label: "Mental model" },
@@ -106,17 +108,8 @@ function Section({
   );
 }
 
-function Code({ children, label }: { children: string; label?: string }) {
-  return (
-    <div className="rounded-lg border border-paper-line dark:border-ink-line bg-paper-soft dark:bg-ink-soft overflow-hidden">
-      {label && (
-        <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider opacity-50 border-b border-paper-line dark:border-ink-line">
-          {label}
-        </div>
-      )}
-      <pre className="p-4 text-xs leading-relaxed overflow-x-auto">{children}</pre>
-    </div>
-  );
+function Code({ children, label, lang = "typescript" }: { children: string; label?: string; lang?: Lang }) {
+  return <Highlighted code={children} label={label} lang={lang} />;
 }
 
 function P({ children }: { children: React.ReactNode }) {
@@ -160,7 +153,7 @@ function QuickStart() {
   return (
     <Section id="quick-start" title="Quick start">
       <P>Install:</P>
-      <Code label="terminal">{`pnpm add -D @ldlework/workmark`}</Code>
+      <Code label="terminal" lang="bash">{`pnpm add -D @ldlework/workmark`}</Code>
       <P>Write a command:</P>
       <Code label=".wm/commands/build.ts">{`/** Build the project */
 import { cmd } from "@ldlework/workmark/define";
@@ -169,7 +162,7 @@ export default cmd({
   handler: (_, { sh }) => sh("cargo build"),
 });`}</Code>
       <P>Run it:</P>
-      <Code label="terminal">{`wm build`}</Code>
+      <Code label="terminal" lang="bash">{`wm build`}</Code>
       <P>
         That's the simplest case. Projects and traits earn their keep when you have
         multiple packages or shared config — see below.
@@ -369,7 +362,7 @@ function Running() {
   return (
     <Section id="running" title="Running">
       <H3>CLI</H3>
-      <Code label="terminal">{`wm --help                         # list all commands
+      <Code label="terminal" lang="bash">{`wm --help                         # list all commands
 wm build --help                   # per-command help
 wm build api                      # one project
 wm build api web                  # two projects
@@ -405,7 +398,7 @@ wm docker:up api --service=db     # nested group, with a flag`}</Code>
         server. Every command is an MCP tool; input schemas are JSON Schema derived from your
         zod declarations. Point your client at the binary:
       </P>
-      <Code label=".mcp.json">{`{
+      <Code label=".mcp.json" lang="jsonc">{`{
   "mcpServers": {
     "workspace": {
       "command": "node",

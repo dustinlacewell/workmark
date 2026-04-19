@@ -1,3 +1,5 @@
+import { Code } from "./Code";
+
 export function Scaling() {
   return (
     <section className="px-6 py-20 border-t border-paper-line dark:border-ink-line">
@@ -15,8 +17,9 @@ export function Scaling() {
         </p>
 
         <div className="mt-10">
-          <CodePanel label=".wm/traits/docker.ts">
-{`import { z } from "zod";
+          <Code
+            label=".wm/traits/docker.ts"
+            code={`import { z } from "zod";
 import { defineTrait } from "@ldlework/workmark/define";
 
 export const docker = defineTrait({
@@ -26,26 +29,34 @@ export const docker = defineTrait({
     service: z.string(),
   }),
 });`}
-          </CodePanel>
+          />
         </div>
 
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <CodePanel label="sites/api/wm.ts">
-{`defineProject({
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
+          <Code
+            label="sites/api/wm.ts"
+            code={`defineProject({
   name: "api",
   has: {
-    docker: { composeFile: "docker-compose.yml", service: "api" },
+    docker: {
+      composeFile: "docker-compose.yml",
+      service: "api",
+    },
   },
 });`}
-          </CodePanel>
-          <CodePanel label="sites/web/wm.ts">
-{`defineProject({
+          />
+          <Code
+            label="sites/web/wm.ts"
+            code={`defineProject({
   name: "web",
   has: {
-    docker: { composeFile: "docker-compose.yml", service: "web" },
+    docker: {
+      composeFile: "docker-compose.yml",
+      service: "web",
+    },
   },
 });`}
-          </CodePanel>
+          />
         </div>
 
         <p className="mt-8 opacity-70">
@@ -54,34 +65,26 @@ export const docker = defineTrait({
         </p>
 
         <div className="mt-6">
-          <CodePanel label=".wm/commands/up.ts">
-{`export default cmd({
+          <Code
+            label=".wm/commands/up.ts"
+            code={`export default cmd({
   needs: [docker],
   handler: (_, { traits, sh }) =>
     sh(\`docker compose -f \${traits.docker.composeFile} up -d \${traits.docker.service}\`),
 });`}
-          </CodePanel>
+          />
         </div>
 
         <div className="mt-6">
-          <CodePanel label="terminal">
-{`wm up api
+          <Code
+            label="terminal"
+            lang="bash"
+            code={`wm up api
 wm up api web        # both in parallel
 wm up --help         # project: [api, web]`}
-          </CodePanel>
+          />
         </div>
       </div>
     </section>
-  );
-}
-
-function CodePanel({ label, children }: { label: string; children: string }) {
-  return (
-    <div className="rounded-lg border border-paper-line dark:border-ink-line bg-paper-soft dark:bg-ink-soft overflow-hidden">
-      <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider opacity-50 border-b border-paper-line dark:border-ink-line">
-        {label}
-      </div>
-      <pre className="p-3 text-xs leading-relaxed overflow-x-auto">{children}</pre>
-    </div>
   );
 }

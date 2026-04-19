@@ -1,3 +1,5 @@
+import { Code } from "./Code";
+
 export function Install() {
   return (
     <section className="px-6 py-20 border-t border-paper-line dark:border-ink-line">
@@ -13,7 +15,8 @@ export function Install() {
           <Step
             n={1}
             title="Install"
-            code={`pnpm add -D @ldlework/workmark`}
+            code="pnpm add -D @ldlework/workmark"
+            lang="bash"
           />
           <Step
             n={2}
@@ -29,6 +32,7 @@ export default cmd({
           <Step
             n={3}
             title="Run it"
+            lang="bash"
             code={`wm build              # CLI
 # or click it in the VS Code dashboard
 # or let Claude call it as an MCP tool`}
@@ -53,11 +57,13 @@ function Step({
   title,
   code,
   file,
+  lang,
 }: {
   n: number;
   title: string;
   code: string;
   file?: string;
+  lang?: "typescript" | "bash";
 }) {
   return (
     <li className="flex gap-5 items-start">
@@ -66,13 +72,8 @@ function Step({
       </div>
       <div className="flex-1 min-w-0">
         <h3 className="font-semibold tracking-tight">{title}</h3>
-        <div className="mt-2 rounded-lg border border-paper-line dark:border-ink-line bg-paper-soft dark:bg-ink-soft overflow-hidden">
-          {file && (
-            <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider opacity-50 border-b border-paper-line dark:border-ink-line">
-              {file}
-            </div>
-          )}
-          <pre className="p-3 text-xs leading-relaxed overflow-x-auto">{code}</pre>
+        <div className="mt-2">
+          <Code code={code} lang={lang ?? "typescript"} label={file} />
         </div>
       </div>
     </li>

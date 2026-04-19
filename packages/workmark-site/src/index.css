@@ -18,3 +18,32 @@
     @apply font-mono;
   }
 }
+
+/* Shiki dual-theme via CSS variables. Light is default; dark swaps in under .dark. */
+.wm-shiki pre {
+  background-color: transparent !important;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+}
+.wm-shiki pre code {
+  background: transparent;
+  padding: 0;
+}
+.wm-shiki .line {
+  display: block;
+}
+
+.wm-shiki pre,
+.wm-shiki pre span {
+  color: var(--shiki-light);
+}
+.dark .wm-shiki pre,
+.dark .wm-shiki pre span {
+  color: var(--shiki-dark) !important;
+}
+.wm-shiki pre span[style*="--shiki-light-bg"] {
+  background-color: var(--shiki-light-bg);
+}
+.dark .wm-shiki pre span[style*="--shiki-dark-bg"] {
+  background-color: var(--shiki-dark-bg) !important;
+}
