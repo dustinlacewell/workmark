@@ -61,13 +61,21 @@ export function validateHas(
         `Project "${def.name}" declares has.${traitName}, but no such trait is defined\n  at ${sourceFile}\n  known traits: ${known}`,
       );
     }
-    const result = trait.schema.safeParse(raw);
+    // Marker-trait sugar: `has: { x: true }` parses the trait with `{}`, which
+    // triggers per-field defaults. Zod 4's outer `.default({})` returns `{}`
+    // for undefined input — useful but NOT deeply defaulted — so we pass `{}`
+    // explicitly to get nested defaults.
+    const input = raw === true ? {} : raw;
+    const result = trait.schema.safeParse(input);
     if (!result.success) {
       const issues = result.error.issues
         .map((i) => `  ${i.path.join(".") || "(root)"}: ${i.message}`)
         .join("\n");
+      const hint = raw === true
+        ? `\n  hint: "true" is sugar for defaults; trait "${traitName}" has no top-level .default(). Provide an object literal.`
+        : "";
       throw new Error(
-        `Project "${def.name}" has.${traitName} failed validation:\n${issues}\n  at ${sourceFile}`,
+        `Project "${def.name}" has.${traitName} failed validation:\n${issues}\n  at ${sourceFile}${hint}`,
       );
     }
     out[traitName] = result.data;

@@ -8,7 +8,7 @@ export default [
     description: "CLI + MCP server library",
     has: {
       buildable: { command: "pnpm build" },
-      typecheckable: {},
+      typecheckable: true,
       publishable: { kind: "npm", npmName: "@ldlework/workmark" },
     },
   }),
@@ -19,7 +19,7 @@ export default [
     description: "VS Code dashboard extension",
     has: {
       buildable: { command: "pnpm build" },
-      typecheckable: {},
+      typecheckable: true,
       vscodeExtension: { publisher: "ldlework" },
     },
   }),
@@ -30,7 +30,7 @@ export default [
     description: "Marketing site at workmark.ldlework.com",
     has: {
       buildable: { command: "pnpm build" },
-      typecheckable: {},
+      typecheckable: true,
     },
   }),
 ];

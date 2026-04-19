@@ -73,12 +73,15 @@ export type SelectMode = "one" | "one-or-many" | "all";
 /** Framework-standard context passed to every handler. */
 export interface BaseCtx {
   workspace: IWorkspace;
-  /** Run a shell command in the resolved cwd (project.dir when needs is set, else workspace.root). */
-  sh: (cmd: string, opts?: { timeout?: number }) => Promise<CallToolResult>;
-  /** Run a shell command with explicit options. */
-  exec: (cmd: string, opts: { cwd: string; timeout?: number }) => Promise<CallToolResult>;
+  /** Run a shell command (or sequence) in the resolved cwd. An array is executed
+   * sequentially; fails fast; output is concatenated. */
+  sh: (cmd: string | readonly string[], opts?: { timeout?: number; env?: Record<string, string> }) => Promise<CallToolResult>;
+  /** Run a shell command with explicit options (cwd, timeout, env). */
+  exec: (cmd: string, opts: { cwd: string; timeout?: number; env?: Record<string, string> }) => Promise<CallToolResult>;
   ok: (data: unknown) => CallToolResult;
   fail: (error: unknown) => CallToolResult;
+  /** Invoke another command by name with wire-shape args. */
+  invoke: (name: string, args: Record<string, unknown>) => Promise<CallToolResult>;
 }
 
 /** Context for commands with `needs`. Adds `project` and `traits`. */

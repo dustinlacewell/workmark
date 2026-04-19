@@ -118,6 +118,34 @@ export function projectsOf(trait: Trait): z.ZodType {
   });
 }
 
+/** Build a schema whose shape depends on a specific project's trait data.
+ *
+ * Usage: `traitField(docker, d => z.enum(d.buildable)).forProject("ghost")`.
+ */
+export function traitField<T extends Trait<string, unknown>>(
+  trait: T,
+  selector: (data: unknown) => z.ZodType,
+): TraitFieldBuilder {
+  return {
+    forProject(name: string): z.ZodType {
+      return fromWorkspace((ws) => {
+        const project = ws.get(name);
+        if (!project.hasTrait(trait)) {
+          throw new Error(
+            `traitField(${trait.name}).forProject("${name}") — project does not fulfill trait "${trait.name}"`,
+          );
+        }
+        const data = project.trait(trait as Trait<string, unknown>);
+        return selector(data);
+      });
+    },
+  };
+}
+
+export interface TraitFieldBuilder {
+  forProject(name: string): z.ZodType;
+}
+
 // ---- Re-export select and run option types -----------------------------
 
 export type { SelectMode, RunOptions, ReduceFn };

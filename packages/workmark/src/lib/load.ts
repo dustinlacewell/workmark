@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { createJiti } from "jiti";
 import { z } from "zod";
-import { execAsync, ok, fail } from "./helpers.js";
+import { execAsync, ok, fail, shSeq } from "./helpers.js";
 import type {
   BaseCtx,
   HandlerReturn,
@@ -185,13 +185,28 @@ function buildSchema(
 
 // --- Context construction ------------------------------------------------
 
-function makeBaseCtx(ws: IWorkspace, cwdResolver: () => string): BaseCtx {
+/** Invocation host: looks up commands for ctx.invoke. Set during loadCommands. */
+interface InvocationHost {
+  invoke: (name: string, args: Record<string, unknown>) => Promise<CallToolResult>;
+}
+
+function makeBaseCtx(
+  ws: IWorkspace,
+  cwdResolver: () => string,
+  host: InvocationHost,
+): BaseCtx {
   return {
     workspace: ws,
     ok,
     fail,
-    sh: (cmd, opts) => execAsync(cmd, { cwd: cwdResolver(), timeout: opts?.timeout }),
+    sh: (cmd, opts) => {
+      const options = { cwd: cwdResolver(), timeout: opts?.timeout, env: opts?.env };
+      return Array.isArray(cmd)
+        ? shSeq(cmd, options)
+        : execAsync(cmd as string, options);
+    },
     exec: (cmd, opts) => execAsync(cmd, opts),
+    invoke: host.invoke,
   };
 }
 
@@ -199,11 +214,12 @@ function makeNeedsCtx(
   ws: IWorkspace,
   project: IProject,
   needs: readonly Trait[],
+  host: InvocationHost,
 ): NeedsCtx<Record<string, unknown>> {
   const traits: Record<string, unknown> = {};
   for (const t of needs) traits[t.name] = project.trait(t as Trait<string, unknown>);
   return {
-    ...makeBaseCtx(ws, () => project.dir),
+    ...makeBaseCtx(ws, () => project.dir, host),
     project,
     traits,
   };
@@ -273,18 +289,20 @@ async function runMultiple(
   needs: readonly Trait[],
   workspace: IWorkspace,
   run: RunOptions | undefined,
+  host: InvocationHost,
 ): Promise<CallToolResult> {
   const callerArgs = stripProjectArg(args);
 
   const runOne = async (p: IProject): Promise<ProjectResult> => {
-    const ctx = makeNeedsCtx(workspace, p, needs);
+    const ctx = makeNeedsCtx(workspace, p, needs, host);
     const res = await runHandler(raw, callerArgs, ctx);
     const text = res.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
     return { project: p.name, ok: !res.isError, output: text, error: res.isError ? text : undefined };
   };
 
-  // parallel with concurrency cap
-  const concurrency = run?.concurrency ?? 4;
+  // serial when requested; otherwise parallel with concurrency cap
+  const serial = run?.order === "serial";
+  const concurrency = serial ? 1 : (run?.concurrency ?? 4);
   const results: ProjectResult[] = new Array(projects.length);
   let idx = 0;
   const workers = Array.from({ length: Math.min(concurrency, projects.length) }, async () => {
@@ -329,13 +347,14 @@ function resolve(
   workspace: Workspace,
   group: string,
   sourceFile: string,
+  host: InvocationHost,
 ): ResolvedCommand {
   const meta = deriveMetadata(def, sourceFile);
   const rawNeeds = def.needs ?? [];
   const needs: Trait[] = rawNeeds.map((t) =>
     typeof t === "string" ? workspace.traits.require(t) : t as Trait,
   );
-  const select: SelectMode = def.select ?? (needs.length > 0 ? "one" : "one");
+  const select: SelectMode = def.select ?? (needs.length > 0 ? "one-or-many" : "one");
 
   if (needs.length === 0 && select !== "one") {
     throw new Error(`Command "${meta.name}": select requires needs (at ${sourceFile})`);
@@ -349,18 +368,18 @@ function resolve(
 
   const handler: ResolvedHandler = async (args) => {
     if (needs.length === 0) {
-      const ctx = makeBaseCtx(workspace, () => workspace.root);
+      const ctx = makeBaseCtx(workspace, () => workspace.root, host);
       return runHandler(def.handler, args, ctx);
     }
 
     const projects = resolveProjects(needs, select, workspace, args.project);
 
     if (select === "one") {
-      const ctx = makeNeedsCtx(workspace, projects[0], needs);
+      const ctx = makeNeedsCtx(workspace, projects[0], needs, host);
       return runHandler(def.handler, stripProjectArg(args), ctx);
     }
 
-    return runMultiple(def.handler, args, projects, needs, workspace, def.run);
+    return runMultiple(def.handler, args, projects, needs, workspace, def.run, host);
   };
 
   return {
@@ -391,29 +410,78 @@ function isCommandFile(name: string): boolean {
   return name.endsWith(".ts") && !name.endsWith(".d.ts");
 }
 
+interface Discovered {
+  filePath: string;
+  resolvedName: string;  // colon-joined path relative to commands root (minus extension)
+  group: string;
+}
+
+/** Walk the commands dir recursively. Maps paths to colon-joined command names. */
+function walkCommands(root: string): Discovered[] {
+  const out: Discovered[] = [];
+  function walk(dir: string, prefix: string[]): void {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full, [...prefix, entry.name]);
+      } else if (isCommandFile(entry.name)) {
+        const base = entry.name.replace(/\.ts$/, "");
+        if (base.includes(":")) {
+          throw new Error(`Command filename contains ':' which is reserved: ${full}`);
+        }
+        const parts = base === "index" ? prefix : [...prefix, base];
+        if (parts.length === 0) continue; // bare root index.ts not allowed
+        const resolvedName = parts.join(":");
+        const group = prefix.length > 0 ? titleCase(prefix[0]) : "";
+        out.push({ filePath: full, resolvedName, group });
+      }
+    }
+  }
+  walk(root, []);
+  return out;
+}
+
 export async function loadCommands(workspace: Workspace): Promise<ResolvedCommand[]> {
   const commandsDir = join(workspace.root, ".wm", "commands");
   if (!existsSync(commandsDir)) return [];
 
   const jiti = createJiti(commandsDir, jitiOptions());
   const commands: ResolvedCommand[] = [];
+  const byName = new Map<string, ResolvedCommand>();
 
-  for (const entry of readdirSync(commandsDir)) {
-    const entryPath = join(commandsDir, entry);
-    const stat = statSync(entryPath);
-
-    if (stat.isDirectory()) {
-      const group = titleCase(entry);
-      for (const file of readdirSync(entryPath)) {
-        if (!isCommandFile(file)) continue;
-        const filePath = join(entryPath, file);
-        const def = await importCommand(jiti, filePath);
-        if (def) commands.push(resolve(def, workspace, group, filePath));
+  // Invocation host: commands map is populated progressively; cycle-detected per-call.
+  const activeStack = new Set<string>();
+  const host: InvocationHost = {
+    invoke: async (name, args) => {
+      if (activeStack.has(name)) {
+        const trace = [...activeStack, name].join(" → ");
+        return fail(`Cyclic invocation: ${trace}`);
       }
-    } else if (isCommandFile(entry)) {
-      const def = await importCommand(jiti, entryPath);
-      if (def) commands.push(resolve(def, workspace, "", entryPath));
+      const target = byName.get(name);
+      if (!target) return fail(`Unknown command: "${name}"`);
+      activeStack.add(name);
+      try {
+        return await target.handler(args);
+      } finally {
+        activeStack.delete(name);
+      }
+    },
+  };
+
+  const discovered = walkCommands(commandsDir);
+  for (const d of discovered) {
+    const def = await importCommand(jiti, d.filePath);
+    if (!def) continue;
+    const cmd = resolve(def, workspace, d.group, d.filePath, host);
+    // Override resolved name from path-derived name (filename was the fallback in meta).
+    // Meta.name wins if explicitly set; otherwise use the discovered name.
+    const userProvidedName = def.meta?.name;
+    if (!userProvidedName) cmd.name = d.resolvedName;
+    if (byName.has(cmd.name)) {
+      throw new Error(`Duplicate command name "${cmd.name}": ${d.filePath} collides with ${byName.get(cmd.name)!.sourceFile}`);
     }
+    byName.set(cmd.name, cmd);
+    commands.push(cmd);
   }
 
   return commands;

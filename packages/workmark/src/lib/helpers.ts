@@ -35,16 +35,18 @@ export function fail(error: unknown): CallToolResult {
 export interface ExecOptions {
   cwd: string;
   timeout?: number; // ms, default 120_000
+  env?: Record<string, string>;
 }
 
 export function execRaw(command: string, opts: ExecOptions): string {
-  const { cwd, timeout = 120_000 } = opts;
+  const { cwd, timeout = 120_000, env } = opts;
   return execSync(command, {
     cwd,
     timeout,
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 1024 * 1024 * 10,
+    env: env ? { ...process.env, ...env } : process.env,
   });
 }
 
@@ -62,14 +64,34 @@ export async function execAsyncRaw(
   command: string,
   opts: ExecOptions,
 ): Promise<string> {
-  const { cwd, timeout = 120_000 } = opts;
+  const { cwd, timeout = 120_000, env } = opts;
   const { stdout } = await execPromise(command, {
     cwd,
     timeout,
     encoding: "utf-8",
     maxBuffer: 1024 * 1024 * 10,
+    env: env ? { ...process.env, ...env } : process.env,
   });
   return stdout;
+}
+
+/** Run a sequence of shell commands. Fails fast; concatenates outputs. */
+export async function shSeq(
+  commands: readonly string[],
+  opts: ExecOptions,
+): Promise<CallToolResult> {
+  const outputs: string[] = [];
+  for (const cmd of commands) {
+    try {
+      outputs.push(await execAsyncRaw(cmd, opts));
+    } catch (e) {
+      const prior = outputs.join("\n");
+      const err = e instanceof Error ? (e as Error & { stderr?: string; stdout?: string }) : null;
+      const errText = err?.stderr || err?.stdout || (err?.message ?? String(e));
+      return fail(prior ? `${prior}\n${errText}` : errText);
+    }
+  }
+  return ok(outputs.join("\n"));
 }
 
 export async function execAsync(
