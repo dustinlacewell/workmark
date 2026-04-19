@@ -17,7 +17,7 @@ import type {
   SelectMode,
   Trait,
 } from "./types.js";
-import { FROM_WORKSPACE } from "./types.js";
+import { FROM_ARGS, FROM_WORKSPACE } from "./types.js";
 import type { StaticCommandDef } from "./define.js";
 import type { Workspace } from "./workspace.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -62,9 +62,26 @@ function deriveMetadata(def: StaticCommandDef, sourceFile: string): DerivedMeta 
   return { name, label, description };
 }
 
-// --- fromWorkspace resolution --------------------------------------------
+// --- fromWorkspace / fromArgs resolution --------------------------------
 
 type FromWsMarker = { [FROM_WORKSPACE]?: (ws: IWorkspace) => z.ZodType };
+type FromArgsMarker = { [FROM_ARGS]?: (ws: IWorkspace, args: Record<string, unknown>) => z.ZodType };
+
+/** Detect whether a schema (or any of its wrappers) carries a FROM_ARGS marker.
+ * Such fields are resolved at invocation time, not load time. */
+function hasFromArgs(field: z.ZodType | Record<string, unknown>): boolean {
+  if (!(field instanceof z.ZodType)) return false;
+  return walkForFromArgs(field);
+}
+
+function walkForFromArgs(node: z.ZodType): boolean {
+  if ((node as unknown as FromArgsMarker)[FROM_ARGS]) return true;
+  if (node instanceof z.ZodOptional) return walkForFromArgs(node.unwrap() as unknown as z.ZodType);
+  if (node instanceof z.ZodNullable) return walkForFromArgs(node.unwrap() as unknown as z.ZodType);
+  if (node instanceof z.ZodDefault) return walkForFromArgs(node.unwrap() as unknown as z.ZodType);
+  if (node instanceof z.ZodArray) return walkForFromArgs(node.element as unknown as z.ZodType);
+  return false;
+}
 
 function resolveFromWorkspace(field: z.ZodType | Record<string, unknown>, ws: IWorkspace): z.ZodType | Record<string, unknown> {
   if (!(field instanceof z.ZodType)) return field;
@@ -72,10 +89,12 @@ function resolveFromWorkspace(field: z.ZodType | Record<string, unknown>, ws: IW
 }
 
 function walk(node: z.ZodType, ws: IWorkspace): z.ZodType {
+  // Leave FROM_ARGS markers alone — they resolve per-invocation.
+  if ((node as unknown as FromArgsMarker)[FROM_ARGS]) return node;
+
   const marked = (node as unknown as FromWsMarker)[FROM_WORKSPACE];
   if (marked) return marked(ws);
 
-  // Walk into common wrappers, resolve inner, rewrap.
   if (node instanceof z.ZodOptional) return walk(node.unwrap() as unknown as z.ZodType, ws).optional();
   if (node instanceof z.ZodNullable) return walk(node.unwrap() as unknown as z.ZodType, ws).nullable();
   if (node instanceof z.ZodDefault) {
@@ -93,6 +112,47 @@ function resolveFields(fields: SchemaFields | undefined, ws: IWorkspace): Schema
   const out: SchemaFields = {};
   for (const [k, v] of Object.entries(fields)) {
     out[k] = resolveFromWorkspace(v, ws);
+  }
+  return out;
+}
+
+/** Resolve FROM_ARGS markers in a walked schema tree against a specific args object. */
+function walkWithArgs(node: z.ZodType, ws: IWorkspace, args: Record<string, unknown>): z.ZodType {
+  const marked = (node as unknown as FromArgsMarker)[FROM_ARGS];
+  if (marked) return marked(ws, args);
+  if (node instanceof z.ZodOptional) return walkWithArgs(node.unwrap() as unknown as z.ZodType, ws, args).optional();
+  if (node instanceof z.ZodNullable) return walkWithArgs(node.unwrap() as unknown as z.ZodType, ws, args).nullable();
+  if (node instanceof z.ZodDefault) {
+    const def = (node._def as { defaultValue: unknown }).defaultValue;
+    return walkWithArgs(node.unwrap() as unknown as z.ZodType, ws, args).default(def as never);
+  }
+  if (node instanceof z.ZodArray) {
+    return z.array(walkWithArgs(node.element as unknown as z.ZodType, ws, args));
+  }
+  return node;
+}
+
+/** Per-invocation: validate any FROM_ARGS fields against the resolved schema.
+ * Returns the parsed args (with fromArgs fields replaced by validated values). */
+function validateFromArgsFields(
+  args: Record<string, unknown>,
+  fromArgsFields: Array<{ name: string; schema: z.ZodType }>,
+  ws: IWorkspace,
+): Record<string, unknown> {
+  if (fromArgsFields.length === 0) return args;
+  const out = { ...args };
+  for (const { name, schema } of fromArgsFields) {
+    const resolved = walkWithArgs(schema, ws, args);
+    const raw = args[name];
+    if (raw === undefined) continue;
+    const result = resolved.safeParse(raw);
+    if (!result.success) {
+      const issues = result.error.issues
+        .map((i) => `  ${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("\n");
+      throw new Error(`Field "${name}" failed validation:\n${issues}`);
+    }
+    out[name] = result.data;
   }
   return out;
 }
@@ -165,7 +225,7 @@ function buildSchema(
     for (const [name, field] of Object.entries(src)) {
       if (name === "project" && projectArgName) {
         throw new Error(
-          `Command declares arg/flag "project", but it is framework-reserved under needs`,
+          `Field "project" collides with framework-injected ctx.project.\n  hint: rename the field; ctx.project is always present under needs`,
         );
       }
       const schema = fieldToJsonSchema(field);
@@ -257,6 +317,8 @@ function resolveProjects(
   argsValue: unknown,
 ): IProject[] {
   const eligible = workspace.projects.filter((p) => needs.every((t) => p.hasTrait(t)));
+  const eligibleList = eligible.map((p) => p.name).join(", ");
+  const traitList = needs.map((t) => t.name).join(", ");
 
   if (select === "all") return eligible;
 
@@ -267,17 +329,33 @@ function resolveProjects(
       : [];
 
   if (names.length === 0) {
-    if (select === "one") throw new Error(`Command requires a project name`);
+    if (select === "one") {
+      throw new Error(
+        `Missing project argument.\n  needs: [${traitList}]\n  eligible: ${eligibleList}`,
+      );
+    }
     throw new Error(
-      `Command requires at least one project. Eligible: ${eligible.map((p) => p.name).join(", ")}`,
+      `Missing project argument — select "${select}" requires 1+ project names.\n  needs: [${traitList}]\n  eligible: ${eligibleList}`,
     );
   }
 
-  const resolved = names.map((n) => workspace.get(n));
-  for (const p of resolved) {
-    if (!needs.every((t) => p.hasTrait(t))) {
-      throw new Error(`Project "${p.name}" does not fulfill all required traits`);
+  const resolved: IProject[] = [];
+  for (const n of names) {
+    let p: IProject;
+    try {
+      p = workspace.get(n);
+    } catch {
+      throw new Error(
+        `Unknown project "${n}".\n  available: ${workspace.projects.map((p) => p.name).join(", ")}\n  eligible for this command: ${eligibleList}`,
+      );
     }
+    const missing = needs.filter((t) => !p.hasTrait(t)).map((t) => t.name);
+    if (missing.length > 0) {
+      throw new Error(
+        `Project "${p.name}" does not fulfill required trait(s) [${missing.join(", ")}].\n  eligible projects: ${eligibleList}`,
+      );
+    }
+    resolved.push(p);
   }
   return resolved;
 }
@@ -342,6 +420,15 @@ async function runMultiple(
 
 // --- Main resolve --------------------------------------------------------
 
+function collectFromArgsFields(fields: SchemaFields | undefined): Array<{ name: string; schema: z.ZodType }> {
+  const out: Array<{ name: string; schema: z.ZodType }> = [];
+  if (!fields) return out;
+  for (const [name, field] of Object.entries(fields)) {
+    if (field instanceof z.ZodType && hasFromArgs(field)) out.push({ name, schema: field });
+  }
+  return out;
+}
+
 function resolve(
   def: StaticCommandDef,
   workspace: Workspace,
@@ -360,26 +447,65 @@ function resolve(
     throw new Error(`Command "${meta.name}": select requires needs (at ${sourceFile})`);
   }
 
+  // `for` binds this command to a named project. No project arg is exposed on
+  // any surface; ctx.project is the bound project.
+  let boundProject: IProject | null = null;
+  if (def.for !== undefined) {
+    if (needs.length === 0) {
+      throw new Error(
+        `Command "${meta.name}": \`for\` requires \`needs\` (a fixed project without required traits is meaningless)\n  at ${sourceFile}`,
+      );
+    }
+    try {
+      boundProject = workspace.get(def.for);
+    } catch {
+      throw new Error(
+        `Command "${meta.name}": \`for: "${def.for}"\` — project not found\n  at ${sourceFile}\n  available: ${workspace.projects.map(p => p.name).join(", ")}`,
+      );
+    }
+    for (const t of needs) {
+      if (!boundProject.hasTrait(t)) {
+        throw new Error(
+          `Command "${meta.name}": bound project "${def.for}" does not fulfill trait "${t.name}"\n  at ${sourceFile}`,
+        );
+      }
+    }
+  }
+
   const resolvedArgs = resolveFields(def.args, workspace);
   const resolvedFlags = resolveFields(def.flags, workspace);
 
-  const projectArg = projectArgFor(needs, select, workspace);
+  // Collect invocation-time-resolved fields for per-call validation.
+  const fromArgsFields = [
+    ...collectFromArgsFields(resolvedArgs),
+    ...collectFromArgsFields(resolvedFlags),
+  ];
+
+  // `for` suppresses the user-facing project arg.
+  const projectArg = boundProject ? null : projectArgFor(needs, select, workspace);
   const { inputSchema, positional } = buildSchema(resolvedArgs, resolvedFlags, projectArg);
 
   const handler: ResolvedHandler = async (args) => {
+    const validated = validateFromArgsFields(args, fromArgsFields, workspace);
+
     if (needs.length === 0) {
       const ctx = makeBaseCtx(workspace, () => workspace.root, host);
-      return runHandler(def.handler, args, ctx);
+      return runHandler(def.handler, validated, ctx);
     }
 
-    const projects = resolveProjects(needs, select, workspace, args.project);
+    if (boundProject) {
+      const ctx = makeNeedsCtx(workspace, boundProject, needs, host);
+      return runHandler(def.handler, validated, ctx);
+    }
+
+    const projects = resolveProjects(needs, select, workspace, validated.project);
 
     if (select === "one") {
       const ctx = makeNeedsCtx(workspace, projects[0], needs, host);
-      return runHandler(def.handler, stripProjectArg(args), ctx);
+      return runHandler(def.handler, stripProjectArg(validated), ctx);
     }
 
-    return runMultiple(def.handler, args, projects, needs, workspace, def.run, host);
+    return runMultiple(def.handler, validated, projects, needs, workspace, def.run, host);
   };
 
   return {

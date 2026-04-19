@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   BaseCtx,
+  FromArgsResolver,
   FromWorkspaceResolver,
   HandlerReturn,
   IWorkspace,
@@ -12,7 +13,7 @@ import type {
   SelectMode,
   Trait,
 } from "./types.js";
-import { FROM_WORKSPACE } from "./types.js";
+import { FROM_ARGS, FROM_WORKSPACE } from "./types.js";
 import { registerAmbient } from "./registry.js";
 
 // ---- defineTrait -------------------------------------------------------
@@ -60,6 +61,7 @@ type CtxFor<N extends readonly Trait<string, unknown>[]> = N extends readonly []
 export interface StaticCommandDef {
   needs?: readonly Trait[];
   select?: SelectMode;
+  for?: string;
   run?: RunOptions;
   args?: SchemaFields;
   flags?: SchemaFields;
@@ -68,7 +70,11 @@ export interface StaticCommandDef {
 }
 
 /** Declare a command. `needs`, `args`, and `flags` are inferred for handler
- * typing; the framework manages the auto-generated `project` arg separately. */
+ * typing; the framework manages the auto-generated `project` arg separately.
+ *
+ * `for`: bind the command to a named project. No project arg is exposed on any
+ * surface; `ctx.project` is the bound project. Validated at load.
+ */
 export function cmd<
   const N extends readonly Trait<string, unknown>[] = readonly [],
   const A extends SchemaFields = Record<string, never>,
@@ -76,6 +82,7 @@ export function cmd<
 >(def: {
   needs?: N;
   select?: SelectMode;
+  for?: string;
   run?: RunOptions;
   args?: A;
   flags?: F;
@@ -95,15 +102,22 @@ export const defineCommand = cmd;
 /** Declare a schema that depends on workspace state. The framework resolves
  * the marker during command load and substitutes the returned zod schema. */
 export function fromWorkspace(resolver: FromWorkspaceResolver): z.ZodType {
-  // We create a lazy zod so it participates in type chaining, but stamp it with
-  // the FROM_WORKSPACE symbol so the loader can detect and replace it before
-  // JSON Schema conversion.
   const marker = z.lazy(() => {
     throw new Error(
       "fromWorkspace marker used at runtime — the framework should have replaced it at load time",
     );
   }) as z.ZodType & { [FROM_WORKSPACE]?: FromWorkspaceResolver };
   marker[FROM_WORKSPACE] = resolver;
+  return marker;
+}
+
+/** Declare a schema whose shape depends on other args supplied at invocation.
+ * The framework resolves this per-call, AFTER other args are parsed. The
+ * field's load-time JSON Schema is permissive (type-agnostic) — validation
+ * runs at invocation with the resolved schema. */
+export function fromArgs(resolver: FromArgsResolver): z.ZodType {
+  const marker = z.any() as z.ZodType & { [FROM_ARGS]?: FromArgsResolver };
+  marker[FROM_ARGS] = resolver;
   return marker;
 }
 
@@ -139,11 +153,30 @@ export function traitField<T extends Trait<string, unknown>>(
         return selector(data);
       });
     },
+    fromArg(argName: string): z.ZodType {
+      return fromArgs((ws, args) => {
+        const target = args[argName];
+        if (typeof target !== "string") {
+          throw new Error(
+            `traitField(${trait.name}).fromArg("${argName}") — expected arg "${argName}" to be a project name string, got ${typeof target}`,
+          );
+        }
+        const project = ws.get(target);
+        if (!project.hasTrait(trait)) {
+          throw new Error(
+            `traitField(${trait.name}).fromArg("${argName}") — project "${target}" does not fulfill trait "${trait.name}"`,
+          );
+        }
+        const data = project.trait(trait as Trait<string, unknown>);
+        return selector(data);
+      });
+    },
   };
 }
 
 export interface TraitFieldBuilder {
   forProject(name: string): z.ZodType;
+  fromArg(argName: string): z.ZodType;
 }
 
 // ---- Re-export select and run option types -----------------------------

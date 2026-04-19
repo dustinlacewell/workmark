@@ -135,7 +135,13 @@ export interface RunOptions {
 
 /** Internal marker stamped on schemas produced by `fromWorkspace`. */
 export const FROM_WORKSPACE = Symbol.for("workmark.fromWorkspace");
+/** Marker for invocation-time (args-dependent) schemas — resolved per-call. */
+export const FROM_ARGS = Symbol.for("workmark.fromArgs");
 
 export interface FromWorkspaceResolver {
   (ws: IWorkspace): z.ZodType;
+}
+
+export interface FromArgsResolver {
+  (ws: IWorkspace, args: Record<string, unknown>): z.ZodType;
 }

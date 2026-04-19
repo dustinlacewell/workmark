@@ -114,7 +114,13 @@ async function main(): Promise<void> {
   }
 
   const args = parseArgs(rest, cmd.positional, cmd.inputSchema);
-  const result = await cmd.handler(args);
+  let result;
+  try {
+    result = await cmd.handler(args);
+  } catch (e) {
+    process.stderr.write((e instanceof Error ? e.message : String(e)) + "\n");
+    process.exit(1);
+  }
 
   for (const content of result.content) {
     if (content.type === "text") {
@@ -127,6 +133,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("Fatal:", err);
+  process.stderr.write((err instanceof Error ? err.message : String(err)) + "\n");
   process.exit(1);
 });
