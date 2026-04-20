@@ -21,6 +21,7 @@ export default [
       buildable: { command: "pnpm build" },
       typecheckable: true,
       vscodeExtension: { publisher: "ldlework" },
+      publishable: { kind: "vsce", publisher: "ldlework" },
     },
   }),
   defineProject({
