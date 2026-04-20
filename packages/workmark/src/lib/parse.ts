@@ -18,6 +18,7 @@ type SchemaProp = {
   items?: { type?: string; enum?: unknown[] };
   enum?: unknown[];
   anyOf?: unknown[];
+  default?: unknown;
 };
 
 type SchemaObject = {
@@ -180,6 +181,22 @@ function coerce(
   return out;
 }
 
+// --- 4. apply defaults ---------------------------------------------------
+
+function applyDefaults(
+  out: Record<string, unknown>,
+  schema: SchemaObject,
+): Record<string, unknown> {
+  const props = schema.properties ?? {};
+  const result = { ...out };
+  for (const [key, prop] of Object.entries(props)) {
+    if (result[key] === undefined && prop && "default" in prop) {
+      result[key] = prop.default;
+    }
+  }
+  return result;
+}
+
 // --- orchestrator --------------------------------------------------------
 
 export function parseArgs(
@@ -188,5 +205,5 @@ export function parseArgs(
   schema: Record<string, unknown>,
 ): Record<string, unknown> {
   const s = schema as SchemaObject;
-  return coerce(dispatch(tokenize(argv), positional, s), s);
+  return applyDefaults(coerce(dispatch(tokenize(argv), positional, s), s), s);
 }
