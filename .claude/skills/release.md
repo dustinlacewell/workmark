@@ -25,22 +25,25 @@ Run `/bump major|minor|patch` (see [bump.md](./bump.md)). The skill handles all 
 pnpm build
 ```
 
-This builds both packages (core via `tsc`, extension via `esbuild` + `vite`).
+Builds all three packages (core via `tsc`, extension via `esbuild` + `vite`, site via `vite-react-ssg`).
 
 ### 4. Package the extension
 
 ```bash
-cd packages/workmark-vsc
-npx @vscode/vsce package --no-dependencies
+wm dev:package-ext workmark-vsc
 ```
 
-This produces `packages/workmark-vsc/workmark-vsc-X.Y.Z.vsix`.
+Produces `packages/workmark-vsc/workmark-vsc-X.Y.Z.vsix`. Equivalent to running `npx @vscode/vsce package --no-dependencies` from the extension dir.
 
-The `--no-dependencies` flag is required because the extension bundles its dependencies via esbuild.
+### 5. Smoke-test the extension
 
-Warnings about missing `repository` field and `LICENSE` in the extension package are expected (the license lives at the repo root).
+```bash
+wm dev:install-ext workmark-vsc
+```
 
-### 5. Push and create GitHub release
+Installs the just-packaged vsix into VS Code / Windsurf. Reload the editor window and exercise the dashboard before shipping — catches broken builds before they reach users.
+
+### 6. Push and create GitHub release
 
 ```bash
 git push origin main
@@ -48,34 +51,31 @@ gh release create vX.Y.Z packages/workmark-vsc/workmark-vsc-X.Y.Z.vsix \
   --title "vX.Y.Z" --notes "release notes here"
 ```
 
-Attach the `.vsix` file as a release asset so users can install manually.
+Attach the `.vsix` as a release asset so users can install manually. The marketing site deploys from `main` automatically via the `site.yml` workflow — nothing to do for it.
 
-### 6. Publish to npm
-
-```bash
-cd packages/workmark
-pnpm publish --access public
-```
-
-- Requires `npm login` beforehand
-- Account has 2FA enabled — will prompt for an OTP from authenticator
-- Pass `--otp=CODE` to provide it non-interactively
-
-### 7. Publish to VS Code Marketplace
+### 7. Publish to npm
 
 ```bash
-cd packages/workmark-vsc
-npx @vscode/vsce publish --no-dependencies
+wm dev:publish workmark --otp=CODE
 ```
 
-- Requires a Personal Access Token from Azure DevOps with `Marketplace (Manage)` scope
-- Run `npx @vscode/vsce login ldlework` to authenticate if the token has expired
-- **Must be run from `packages/workmark-vsc/`**, not the repo root (root `package.json` lacks `engines.vscode`)
-- Publisher is `ldlework`
+- Requires `npm login` beforehand — a stale token manifests as a misleading `404` on publish, not `401`. If the publish 404s, run `npm whoami` to confirm auth.
+- Account has 2FA enabled — provide the OTP via `--otp=CODE`. OTPs rotate every ~30s, so grab it fresh.
+- The command polls npm afterwards until the version is visible and prints the npm link.
+
+### 8. Publish to VS Code Marketplace
+
+```bash
+wm dev:publish workmark-vsc
+```
+
+- Requires a Personal Access Token from Azure DevOps with `Marketplace (Manage)` scope.
+- Run `npx @vscode/vsce login ldlework` to authenticate if the token has expired (expect `TF400813` on auth failure).
+- Publisher is `ldlework`.
 
 ## Gotchas
 
-- The `install-ext.ts` command has a hardcoded vsix filename — must be updated on every version bump
-- `vsce publish` must run from the extension directory, not the repo root
-- npm publish requires OTP (2FA is enabled on the account)
-- The marketplace PAT can expire — if you get a `TF400813` auth error, re-authenticate with `vsce login`
+- `vsce publish` must run from the extension directory; `wm dev:publish workmark-vsc` handles the `cwd` correctly.
+- `npm publish` needs both a logged-in session *and* the OTP — a missing session 404s rather than 401s.
+- Marketplace PATs expire silently; rotate via `vsce login`.
+- The site deploy happens on `git push origin main`; if the site changes need to be visible, push before publishing npm so everything goes live in the same window.
