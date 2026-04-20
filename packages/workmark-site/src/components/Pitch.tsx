@@ -6,7 +6,7 @@ export function Pitch() {
           The idea
         </p>
         <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-center">
-          One file. Three surfaces.
+          Three for the price of one.
         </h2>
         <p className="mt-4 text-lg opacity-70 leading-relaxed text-center max-w-2xl mx-auto">
           Write a command once in TypeScript. Workmark renders it as a CLI, a

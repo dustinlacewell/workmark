@@ -29,10 +29,6 @@
   background: transparent;
   padding: 0;
 }
-.wm-shiki .line {
-  display: block;
-}
-
 .wm-shiki pre,
 .wm-shiki pre span {
   color: var(--shiki-light);

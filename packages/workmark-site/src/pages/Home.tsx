@@ -2,7 +2,6 @@ import { Header } from "../components/Header";
 import { Hero } from "../components/Hero";
 import { Pain } from "../components/Pain";
 import { Pitch } from "../components/Pitch";
-import { Why } from "../components/Why";
 import { Scaling } from "../components/Scaling";
 import { Install } from "../components/Install";
 
@@ -14,7 +13,6 @@ export function Home() {
         <Hero />
         <Pain />
         <Pitch />
-        <Why />
         <Scaling />
         <Install />
       </main>

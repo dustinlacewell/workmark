@@ -4,13 +4,13 @@ export function Scaling() {
   return (
     <section className="px-6 py-20 border-t border-paper-line dark:border-ink-line">
       <div className="max-w-4xl mx-auto">
-        <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent-deep dark:text-accent mb-4">
+        <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent-deep dark:text-accent mb-4 text-center">
           For monorepos
         </p>
-        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
+        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-center">
           One command, many projects.
         </h2>
-        <p className="mt-4 text-lg opacity-70 leading-relaxed max-w-2xl">
+        <p className="mt-4 text-lg opacity-70 leading-relaxed text-center max-w-2xl mx-auto">
           Declare a <code className="font-mono text-sm">trait</code> once with
           a zod schema. Projects fulfill it with typed data. Commands ask for
           the trait and get per-project data, typed, in the handler.
@@ -59,7 +59,7 @@ export const docker = defineTrait({
           />
         </div>
 
-        <p className="mt-8 opacity-70">
+        <p className="mt-8 opacity-70 text-center max-w-2xl mx-auto">
           Now one command, and the project enum in CLI, VS Code, and the
           MCP tool schema is whichever projects fulfill <code className="font-mono text-sm">docker</code>.
         </p>
