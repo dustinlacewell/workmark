@@ -39,7 +39,7 @@ If the user runs `/bump` with no argument, ask which of `major` / `minor` / `pat
 
 - No build, package, publish, or git tag. This is purely a version-string edit + commit.
 - No release-notes generation.
-- Follow up with `wm release <otp>` to publish the npm package; see [release.md](./release.md) for the full workflow (vsce publish, GitHub release, etc.).
+- Follow up with `wm dev:publish <project> --otp=<otp>` to publish; see [release.md](./release.md) for the full workflow (vsce publish, GitHub release, etc.).
 
 ## Edge cases
 

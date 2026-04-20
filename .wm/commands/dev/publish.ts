@@ -51,7 +51,7 @@ export default cmd({
     }
 
     if (kind === "vsce") {
-      return exec(`npx @vscode/vsce publish`, { cwd: project.dir, timeout: 180_000 });
+      return exec(`npx @vscode/vsce publish --no-dependencies`, { cwd: project.dir, timeout: 180_000 });
     }
 
     // kind === "pages": nothing to do — CI handles it
