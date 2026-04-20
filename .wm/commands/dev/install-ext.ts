@@ -10,7 +10,7 @@ export default cmd({
   needs: [vscodeExtension],
   select: "one",
   flags: {
-    editor: z.enum(["windsurf", "code"]).default("windsurf"),
+    editor: z.enum(["code", "windsurf"]).default("code"),
   },
   handler: async ({ editor }, { project, sh }) => {
     const pkg = JSON.parse(readFileSync(join(project.dir, "package.json"), "utf-8")) as { version: string };
@@ -22,6 +22,9 @@ export default cmd({
         timeout: 180_000,
       });
     }
-    return sh(`${editor} --install-extension ${vsix} --force`);
+    // On Windows the VS Code CLI shim is `code.cmd`; using bare `code` may find
+    // the Electron GUI binary first on PATH, which doesn't accept --install-extension.
+    const bin = process.platform === "win32" ? `${editor}.cmd` : editor;
+    return sh(`${bin} --install-extension ${vsix} --force`);
   },
 });
