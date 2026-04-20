@@ -5,6 +5,7 @@
   "version": "1.4.0",
   "private": true,
   "publisher": "ldlework",
+  "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -74,10 +75,12 @@
     "build": "node esbuild.mjs && vite build",
     "build:ext": "node esbuild.mjs",
     "build:webview": "vite build",
+    "build:icon": "node scripts/build-icon.mjs",
     "dev": "concurrently \"node esbuild.mjs --watch\" \"vite build --watch\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^22.19.15",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
