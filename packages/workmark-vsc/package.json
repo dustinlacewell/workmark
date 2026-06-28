@@ -2,7 +2,7 @@
   "name": "workmark-vsc",
   "displayName": "Workmark Dashboard",
   "description": "Visual dashboard for workspace commands",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "private": true,
   "publisher": "ldlework",
   "icon": "resources/icon.png",
