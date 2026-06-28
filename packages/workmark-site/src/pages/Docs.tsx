@@ -381,7 +381,8 @@ wm docker:up api --service=db     # nested group, with a flag`}</Code>
         </a>{" "}
         extension. The Workspace panel shows every command with an auto-generated form:
         enums become dropdowns, booleans become checkboxes, required fields are enforced,
-        and the command runs in the integrated terminal.
+        and the command runs in the integrated terminal. The extension bundles workmark
+        itself, so the dashboard works in any workspace with nothing to install.
       </P>
 
       <H3>MCP</H3>
