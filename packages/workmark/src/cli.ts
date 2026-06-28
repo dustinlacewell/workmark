@@ -80,6 +80,33 @@ function printCommandHelp(cmd: ResolvedCommand): void {
 }
 
 // ---------------------------------------------------------------------------
+// Introspection — machine-readable command metadata (consumed by the VS Code
+// extension, which spawns `wm --introspect` instead of importing the loader).
+// ---------------------------------------------------------------------------
+
+interface CommandMetaJson {
+  name: string;
+  label: string;
+  group: string;
+  description: string;
+  inputSchema: unknown;
+  positional: string[];
+  sourceFile: string | null;
+}
+
+function toCommandMeta(cmd: ResolvedCommand): CommandMetaJson {
+  return {
+    name: cmd.name,
+    label: cmd.label,
+    group: cmd.group,
+    description: cmd.description,
+    inputSchema: cmd.inputSchema,
+    positional: cmd.positional,
+    sourceFile: cmd.sourceFile ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -88,6 +115,11 @@ async function main(): Promise<void> {
 
   const workspace = await loadWorkspace();
   const commands = await loadCommands(workspace);
+
+  if (command === "--introspect") {
+    process.stdout.write(JSON.stringify(commands.map(toCommandMeta)) + "\n");
+    return;
+  }
 
   if (!command || command === "--help" || command === "-h") {
     printHelp(commands);

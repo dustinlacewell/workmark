@@ -66,15 +66,16 @@
         "workmark.runner": {
           "type": "string",
           "default": "",
-          "description": "Command used to invoke wm (e.g. \"pnpm wm\", \"npx wm\"). Leave empty to use \"wm\" directly."
+          "description": "Override how commands are run in the terminal (e.g. \"pnpm wm\", \"npx wm\"). Leave empty to use the workmark CLI bundled with the extension. Does not affect the command list, which always uses the bundled CLI."
         }
       }
     }
   },
   "scripts": {
-    "build": "node esbuild.mjs && vite build",
+    "build": "node esbuild.mjs && vite build && node scripts/bundle-wm.mjs",
     "build:ext": "node esbuild.mjs",
     "build:webview": "vite build",
+    "build:wm": "node scripts/bundle-wm.mjs",
     "build:icon": "node scripts/build-icon.mjs",
     "dev": "concurrently \"node esbuild.mjs --watch\" \"vite build --watch\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json"

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { CommandMeta } from "../shared/types";
+import { resolveRunner } from "./runner";
 
 let terminal: vscode.Terminal | undefined;
 
@@ -9,15 +10,9 @@ function getTerminal(): vscode.Terminal {
   return terminal;
 }
 
-function getRunner(): string[] {
-  const configured = vscode.workspace.getConfiguration("workmark").get<string>("runner");
-  if (configured) return configured.split(/\s+/);
-  return ["wm"];
-}
-
 /** Build a `wm <command> <args>` string and send it to the integrated terminal. */
-export function runInTerminal(cmd: CommandMeta, args: Record<string, unknown>): void {
-  const parts: string[] = [...getRunner(), cmd.name];
+export function runInTerminal(cmd: CommandMeta, args: Record<string, unknown>, extDir: string): void {
+  const parts: string[] = [...resolveRunner(extDir), cmd.name];
   const positionalSet = new Set(cmd.positional);
 
   // Positional args first, in order

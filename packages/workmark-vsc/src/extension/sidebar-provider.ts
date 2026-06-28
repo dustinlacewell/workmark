@@ -42,7 +42,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage((msg: WebviewMessage) => {
       if (msg.type === "run") {
         const cmd = this.commands.find((c) => c.name === msg.name);
-        if (cmd) runInTerminal(cmd, msg.args);
+        if (cmd) runInTerminal(cmd, msg.args, this.extensionUri.fsPath);
       } else if (msg.type === "refresh") {
         vscode.commands.executeCommand("workspace-dashboard.refresh");
       } else if (msg.type === "openFile") {

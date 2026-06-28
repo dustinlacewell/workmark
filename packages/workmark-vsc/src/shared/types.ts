@@ -1,4 +1,4 @@
-/** Serialized command metadata (no handler). Loaded from commands.json at build time. */
+/** Serialized command metadata (no handler). Produced by `wm --introspect`. */
 export interface CommandMeta {
   name: string;
   label: string;
