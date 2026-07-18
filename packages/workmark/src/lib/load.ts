@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { createJiti } from "jiti";
 import { z } from "zod";
-import { execAsync, ok, fail, shSeq } from "./helpers.js";
+import { execAsync, execInteractive, ok, fail, shSeq, shSeqInteractive } from "./helpers.js";
 import type {
   BaseCtx,
   HandlerReturn,
@@ -15,6 +15,7 @@ import type {
   RunOptions,
   SchemaFields,
   SelectMode,
+  Surface,
   Trait,
 } from "./types.js";
 import { FROM_ARGS, FROM_WORKSPACE } from "./types.js";
@@ -254,6 +255,7 @@ function makeBaseCtx(
   ws: IWorkspace,
   cwdResolver: () => string,
   host: InvocationHost,
+  interactive = false,
 ): BaseCtx {
   return {
     workspace: ws,
@@ -261,6 +263,11 @@ function makeBaseCtx(
     fail,
     sh: (cmd, opts) => {
       const options = { cwd: cwdResolver(), timeout: opts?.timeout, env: opts?.env };
+      if (interactive) {
+        return Array.isArray(cmd)
+          ? shSeqInteractive(cmd, options)
+          : execInteractive(cmd as string, options);
+      }
       return Array.isArray(cmd)
         ? shSeq(cmd, options)
         : execAsync(cmd as string, options);
@@ -275,11 +282,12 @@ function makeNeedsCtx(
   project: IProject,
   needs: readonly Trait[],
   host: InvocationHost,
+  interactive = false,
 ): NeedsCtx<Record<string, unknown>> {
   const traits: Record<string, unknown> = {};
   for (const t of needs) traits[t.name] = project.trait(t as Trait<string, unknown>);
   return {
-    ...makeBaseCtx(ws, () => project.dir, host),
+    ...makeBaseCtx(ws, () => project.dir, host, interactive),
     project,
     traits,
   };
@@ -435,16 +443,26 @@ function resolve(
   group: string,
   sourceFile: string,
   host: InvocationHost,
+  surface: Surface,
 ): ResolvedCommand {
   const meta = deriveMetadata(def, sourceFile);
   const rawNeeds = def.needs ?? [];
   const needs: Trait[] = rawNeeds.map((t) =>
     typeof t === "string" ? workspace.traits.require(t) : t as Trait,
   );
-  const select: SelectMode = def.select ?? (needs.length > 0 ? "one-or-many" : "one");
+  const interactive = def.interactive === true;
+  // Interactive commands own the terminal — one child at a time, so with
+  // `needs` they default to (and require) single-project selection.
+  const select: SelectMode = def.select
+    ?? (needs.length > 0 ? (interactive ? "one" : "one-or-many") : "one");
 
   if (needs.length === 0 && select !== "one") {
     throw new Error(`Command "${meta.name}": select requires needs (at ${sourceFile})`);
+  }
+  if (interactive && select !== "one") {
+    throw new Error(
+      `Command "${meta.name}": interactive commands cannot use select "${select}" — the terminal can host one process at a time (at ${sourceFile})`,
+    );
   }
 
   // `for` binds this command to a named project. No project arg is exposed on
@@ -485,23 +503,27 @@ function resolve(
   const projectArg = boundProject ? null : projectArgFor(needs, select, workspace);
   const { inputSchema, positional } = buildSchema(resolvedArgs, resolvedFlags, projectArg);
 
+  // The terminal handoff only exists on the CLI; other surfaces fall back to
+  // buffered execution (MCP additionally excludes interactive commands).
+  const interactiveExec = interactive && surface === "cli";
+
   const handler: ResolvedHandler = async (args) => {
     const validated = validateFromArgsFields(args, fromArgsFields, workspace);
 
     if (needs.length === 0) {
-      const ctx = makeBaseCtx(workspace, () => workspace.root, host);
+      const ctx = makeBaseCtx(workspace, () => workspace.root, host, interactiveExec);
       return runHandler(def.handler, validated, ctx);
     }
 
     if (boundProject) {
-      const ctx = makeNeedsCtx(workspace, boundProject, needs, host);
+      const ctx = makeNeedsCtx(workspace, boundProject, needs, host, interactiveExec);
       return runHandler(def.handler, validated, ctx);
     }
 
     const projects = resolveProjects(needs, select, workspace, validated.project);
 
     if (select === "one") {
-      const ctx = makeNeedsCtx(workspace, projects[0], needs, host);
+      const ctx = makeNeedsCtx(workspace, projects[0], needs, host, interactiveExec);
       return runHandler(def.handler, stripProjectArg(validated), ctx);
     }
 
@@ -519,6 +541,7 @@ function resolve(
     sourceFile,
     select,
     needs: needs.map((t) => t.name),
+    interactive,
   };
 }
 
@@ -567,7 +590,18 @@ function walkCommands(root: string): Discovered[] {
   return out;
 }
 
-export async function loadCommands(workspace: Workspace): Promise<ResolvedCommand[]> {
+export interface LoadCommandsOptions {
+  /** Which host is executing. Interactive commands hand the terminal to the
+   * child only on "cli"; elsewhere they run buffered (and MCP hides them).
+   * Defaults to "mcp" — the conservative surface. */
+  surface?: Surface;
+}
+
+export async function loadCommands(
+  workspace: Workspace,
+  options?: LoadCommandsOptions,
+): Promise<ResolvedCommand[]> {
+  const surface: Surface = options?.surface ?? "mcp";
   const commandsDir = join(workspace.root, ".wm", "commands");
   if (!existsSync(commandsDir)) return [];
 
@@ -598,7 +632,7 @@ export async function loadCommands(workspace: Workspace): Promise<ResolvedComman
   for (const d of discovered) {
     const def = await importCommand(jiti, d.filePath);
     if (!def) continue;
-    const cmd = resolve(def, workspace, d.group, d.filePath, host);
+    const cmd = resolve(def, workspace, d.group, d.filePath, host, surface);
     // Override resolved name from path-derived name (filename was the fallback in meta).
     // Meta.name wins if explicitly set; otherwise use the discovered name.
     const userProvidedName = def.meta?.name;

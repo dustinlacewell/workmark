@@ -18,13 +18,18 @@ async function main(): Promise<void> {
   );
 
   const workspace = await loadWorkspace();
-  const commands = await loadCommands(workspace);
-  const handlers = new Map(commands.map((c) => [c.name, c.handler]));
+  const commands = await loadCommands(workspace, { surface: "mcp" });
+  // Interactive commands own a terminal — an MCP client has none to give.
+  const exposed = commands.filter((c) => !c.interactive);
+  const handlers = new Map(exposed.map((c) => [c.name, c.handler]));
+  const interactiveNames = new Set(
+    commands.filter((c) => c.interactive).map((c) => c.name),
+  );
 
-  console.error(`Loaded ${commands.length} commands from ${workspace.projects.length} projects`);
+  console.error(`Loaded ${exposed.length} commands from ${workspace.projects.length} projects`);
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: commands.map(({ name, description, inputSchema }) => ({
+    tools: exposed.map(({ name, description, inputSchema }) => ({
       name,
       description,
       inputSchema,
@@ -34,6 +39,12 @@ async function main(): Promise<void> {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const handler = handlers.get(request.params.name);
     if (!handler) {
+      if (interactiveNames.has(request.params.name)) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `"${request.params.name}" is an interactive command (long-running, terminal-owning) — run it from a terminal: wm ${request.params.name}`,
+        );
+      }
       throw new McpError(
         ErrorCode.MethodNotFound,
         `Unknown tool: ${request.params.name}`,

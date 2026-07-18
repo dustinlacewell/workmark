@@ -1,4 +1,4 @@
-import { execSync, exec as cpExec } from "node:child_process";
+import { execSync, exec as cpExec, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
@@ -103,4 +103,51 @@ export async function execAsync(
   } catch (e) {
     return fail(e);
   }
+}
+
+// --- Interactive execution (CLI surface only) ----------------------------
+
+/** Run a command with the terminal handed to the child: stdio inherited, no
+ * timeout, no output capture. Resolves when the child exits. Used for
+ * `interactive: true` commands — dev servers, watchers, REPLs.
+ *
+ * A null exit code (the child died to a signal, e.g. the user's Ctrl-C)
+ * counts as success: stopping a dev server is the normal way it ends. */
+export function execInteractive(
+  command: string,
+  opts: Pick<ExecOptions, "cwd" | "env">,
+): Promise<CallToolResult> {
+  return new Promise((resolve) => {
+    const child = spawn(command, {
+      cwd: opts.cwd,
+      shell: true,
+      stdio: "inherit",
+      env: opts.env ? { ...process.env, ...opts.env } : process.env,
+    });
+    // The child shares the terminal's foreground process group, so Ctrl-C
+    // reaches it directly. Ignore SIGINT in the parent while the child runs
+    // so wm survives long enough to report the child's exit.
+    const onSigint = () => {};
+    process.on("SIGINT", onSigint);
+    const done = (result: CallToolResult) => {
+      process.off("SIGINT", onSigint);
+      resolve(result);
+    };
+    child.on("exit", (code) => {
+      done(code === 0 || code === null ? ok("") : fail(`exited with code ${code}`));
+    });
+    child.on("error", (e) => done(fail(e)));
+  });
+}
+
+/** Run a sequence of commands interactively. Fails fast. */
+export async function shSeqInteractive(
+  commands: readonly string[],
+  opts: Pick<ExecOptions, "cwd" | "env">,
+): Promise<CallToolResult> {
+  for (const cmd of commands) {
+    const res = await execInteractive(cmd, opts);
+    if (res.isError) return res;
+  }
+  return ok("");
 }

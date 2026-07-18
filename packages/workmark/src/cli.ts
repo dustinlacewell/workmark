@@ -92,6 +92,9 @@ interface CommandMetaJson {
   inputSchema: unknown;
   positional: string[];
   sourceFile: string | null;
+  /** Long-running terminal-owning command — hosts should run it in a real
+   * terminal rather than capturing its output. */
+  interactive: boolean;
 }
 
 function toCommandMeta(cmd: ResolvedCommand): CommandMetaJson {
@@ -103,6 +106,7 @@ function toCommandMeta(cmd: ResolvedCommand): CommandMetaJson {
     inputSchema: cmd.inputSchema,
     positional: cmd.positional,
     sourceFile: cmd.sourceFile ?? null,
+    interactive: cmd.interactive,
   };
 }
 
@@ -114,7 +118,7 @@ async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
 
   const workspace = await loadWorkspace();
-  const commands = await loadCommands(workspace);
+  const commands = await loadCommands(workspace, { surface: "cli" });
 
   if (command === "--introspect") {
     process.stdout.write(JSON.stringify(commands.map(toCommandMeta)) + "\n");

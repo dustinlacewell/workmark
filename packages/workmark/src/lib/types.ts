@@ -70,6 +70,11 @@ export interface IWorkspace {
 /** How many projects a command runs against. */
 export type SelectMode = "one" | "one-or-many" | "all";
 
+/** Which host is executing commands. Interactive commands hand the terminal
+ * to the child process — only the CLI can do that; the MCP server excludes
+ * them from its tool list. */
+export type Surface = "cli" | "mcp";
+
 /** Framework-standard context passed to every handler. */
 export interface BaseCtx {
   workspace: IWorkspace;
@@ -105,6 +110,9 @@ export interface ResolvedCommand {
   select: SelectMode;
   /** Names of traits this command requires. Empty array = no needs. */
   needs: string[];
+  /** Long-running command that owns the terminal while it runs (dev server,
+   * watcher). CLI-only; the MCP server does not expose it. */
+  interactive: boolean;
 }
 
 export type ResolvedHandler = (
