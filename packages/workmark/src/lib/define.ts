@@ -63,10 +63,15 @@ export interface StaticCommandDef {
   select?: SelectMode;
   for?: string;
   run?: RunOptions;
-  /** Long-running command that owns the terminal (dev server, watcher).
-   * On the CLI, `ctx.sh` switches to inherited stdio with no timeout and
+  /** Long-running command that owns the terminal (dev server, watcher, REPL).
+   * On the CLI, `ctx.sh` switches to inherited stdio — the child gets the
+   * terminal, stdin included — with no timeout and no output capture, and
    * resolves when the child exits. Not exposed over MCP. With `needs`,
-   * implies `select: "one"`. */
+   * implies `select: "one"`.
+   *
+   * Not needed for ordinary long jobs: non-interactive `ctx.sh` on the CLI
+   * already streams output live and has no default timeout (MCP keeps a
+   * 120 s default). */
   interactive?: boolean;
   args?: SchemaFields;
   flags?: SchemaFields;

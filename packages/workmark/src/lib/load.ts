@@ -2,7 +2,10 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { createJiti } from "jiti";
 import { z } from "zod";
-import { execAsync, execInteractive, ok, fail, shSeq, shSeqInteractive } from "./helpers.js";
+import { execAsync, ok, fail } from "./helpers.js";
+import { textOf } from "./result-text.js";
+import { shellFor, type ProjectShell, type Shell } from "./shell.js";
+import { alreadyShown } from "./shown.js";
 import type {
   BaseCtx,
   HandlerReturn,
@@ -255,7 +258,7 @@ function makeBaseCtx(
   ws: IWorkspace,
   cwdResolver: () => string,
   host: InvocationHost,
-  interactive = false,
+  shell: Shell,
 ): BaseCtx {
   return {
     workspace: ws,
@@ -263,14 +266,9 @@ function makeBaseCtx(
     fail,
     sh: (cmd, opts) => {
       const options = { cwd: cwdResolver(), timeout: opts?.timeout, env: opts?.env };
-      if (interactive) {
-        return Array.isArray(cmd)
-          ? shSeqInteractive(cmd, options)
-          : execInteractive(cmd as string, options);
-      }
       return Array.isArray(cmd)
-        ? shSeq(cmd, options)
-        : execAsync(cmd as string, options);
+        ? shell.seq(cmd, options)
+        : shell.one(cmd as string, options);
     },
     exec: (cmd, opts) => execAsync(cmd, opts),
     invoke: host.invoke,
@@ -282,12 +280,12 @@ function makeNeedsCtx(
   project: IProject,
   needs: readonly Trait[],
   host: InvocationHost,
-  interactive = false,
+  shell: Shell,
 ): NeedsCtx<Record<string, unknown>> {
   const traits: Record<string, unknown> = {};
   for (const t of needs) traits[t.name] = project.trait(t as Trait<string, unknown>);
   return {
-    ...makeBaseCtx(ws, () => project.dir, host, interactive),
+    ...makeBaseCtx(ws, () => project.dir, host, shell),
     project,
     traits,
   };
@@ -376,27 +374,39 @@ async function runMultiple(
   workspace: IWorkspace,
   run: RunOptions | undefined,
   host: InvocationHost,
+  shell: Shell,
 ): Promise<CallToolResult> {
   const callerArgs = stripProjectArg(args);
-
-  const runOne = async (p: IProject): Promise<ProjectResult> => {
-    const ctx = makeNeedsCtx(workspace, p, needs, host);
-    const res = await runHandler(raw, callerArgs, ctx);
-    const text = res.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
-    return { project: p.name, ok: !res.isError, output: text, error: res.isError ? text : undefined };
-  };
 
   // serial when requested; otherwise parallel with concurrency cap
   const serial = run?.order === "serial";
   const concurrency = serial ? 1 : (run?.concurrency ?? 4);
-  const results: ProjectResult[] = new Array(projects.length);
+  const workerCount = Math.min(concurrency, projects.length);
+  // Several projects share one terminal: each gets a shell that labels its
+  // output (line prefix when concurrent, header when in turn) and tracks
+  // what it showed. A lone project uses the command's shell as is.
+  const scopedShell = (p: IProject): ProjectShell =>
+    projects.length > 1 ? shell.forProject(p.name, workerCount > 1) : { shell, shown: () => null };
+
+  const runOne = async (p: IProject): Promise<ProjectOutcome> => {
+    const scoped = scopedShell(p);
+    const ctx = makeNeedsCtx(workspace, p, needs, host, scoped.shell);
+    const res = await runHandler(raw, callerArgs, ctx);
+    const text = res.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
+    return {
+      result: { project: p.name, ok: !res.isError, output: text, error: res.isError ? text : undefined },
+      shown: scoped.shown(),
+    };
+  };
+
+  const outcomes: ProjectOutcome[] = new Array(projects.length);
   let idx = 0;
-  const workers = Array.from({ length: Math.min(concurrency, projects.length) }, async () => {
+  const workers = Array.from({ length: workerCount }, async () => {
     while (true) {
       const i = idx++;
       if (i >= projects.length) return;
-      results[i] = await runOne(projects[i]);
-      if (run?.stopOnFailure && !results[i].ok) {
+      outcomes[i] = await runOne(projects[i]);
+      if (run?.stopOnFailure && !outcomes[i].result.ok) {
         idx = projects.length;
         return;
       }
@@ -404,12 +414,29 @@ async function runMultiple(
   });
   await Promise.all(workers);
 
-  const realResults = results.filter(Boolean);
+  const ran = outcomes.filter(Boolean);
+  const realResults = ran.map((o) => o.result);
 
   if (run?.reduce) {
     return run.reduce(realResults);
   }
 
+  const result = aggregate(realResults);
+  // When every project's result only repeats what it showed live, the
+  // aggregate has nothing new for the host to print.
+  if (ran.every((o) => alreadyShown(o.result.output ?? "", o.shown))) {
+    shell.markShown(textOf(result));
+  }
+  return result;
+}
+
+interface ProjectOutcome {
+  result: ProjectResult;
+  /** What the project's sh calls showed live; null when none ran. */
+  shown: readonly string[] | null;
+}
+
+function aggregate(realResults: readonly ProjectResult[]): CallToolResult {
   // default aggregation — if only one ran, return its output directly
   if (realResults.length === 1) {
     const r = realResults[0];
@@ -503,31 +530,32 @@ function resolve(
   const projectArg = boundProject ? null : projectArgFor(needs, select, workspace);
   const { inputSchema, positional } = buildSchema(resolvedArgs, resolvedFlags, projectArg);
 
-  // The terminal handoff only exists on the CLI; other surfaces fall back to
-  // buffered execution (MCP additionally excludes interactive commands).
-  const interactiveExec = interactive && surface === "cli";
+  // The host picks how ctx.sh runs: the CLI streams (or hands the terminal
+  // to interactive commands); other surfaces capture (MCP additionally
+  // excludes interactive commands).
+  const shell = shellFor(surface, interactive);
 
   const handler: ResolvedHandler = async (args) => {
     const validated = validateFromArgsFields(args, fromArgsFields, workspace);
 
     if (needs.length === 0) {
-      const ctx = makeBaseCtx(workspace, () => workspace.root, host, interactiveExec);
+      const ctx = makeBaseCtx(workspace, () => workspace.root, host, shell);
       return runHandler(def.handler, validated, ctx);
     }
 
     if (boundProject) {
-      const ctx = makeNeedsCtx(workspace, boundProject, needs, host, interactiveExec);
+      const ctx = makeNeedsCtx(workspace, boundProject, needs, host, shell);
       return runHandler(def.handler, validated, ctx);
     }
 
     const projects = resolveProjects(needs, select, workspace, validated.project);
 
     if (select === "one") {
-      const ctx = makeNeedsCtx(workspace, projects[0], needs, host, interactiveExec);
+      const ctx = makeNeedsCtx(workspace, projects[0], needs, host, shell);
       return runHandler(def.handler, stripProjectArg(validated), ctx);
     }
 
-    return runMultiple(def.handler, validated, projects, needs, workspace, def.run, host);
+    return runMultiple(def.handler, validated, projects, needs, workspace, def.run, host, shell);
   };
 
   return {
@@ -591,9 +619,10 @@ function walkCommands(root: string): Discovered[] {
 }
 
 export interface LoadCommandsOptions {
-  /** Which host is executing. Interactive commands hand the terminal to the
-   * child only on "cli"; elsewhere they run buffered (and MCP hides them).
-   * Defaults to "mcp" — the conservative surface. */
+  /** Which host is executing. On "cli", `ctx.sh` streams output live with no
+   * default timeout, and interactive commands hand the terminal to the child.
+   * Elsewhere `ctx.sh` captures output with a 120 s default timeout (and MCP
+   * hides interactive commands). Defaults to "mcp" — the conservative surface. */
   surface?: Surface;
 }
 

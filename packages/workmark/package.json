@@ -20,7 +20,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && tsc -p test && node --test \"test/*.test.ts\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

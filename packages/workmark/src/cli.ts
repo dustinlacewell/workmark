@@ -3,7 +3,11 @@
 import { loadCommands } from "./lib/load.js";
 import { loadWorkspace } from "./lib/workspace.js";
 import { parseArgs } from "./lib/parse.js";
+import { textOf } from "./lib/result-text.js";
+import { alreadyShown } from "./lib/shown.js";
+import { cliTranscript } from "./lib/transcript.js";
 import type { ResolvedCommand } from "./lib/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 // ---------------------------------------------------------------------------
 // Help
@@ -158,14 +162,19 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Skip a result that only repeats what ctx.sh already streamed live.
+  if (!alreadyShown(textOf(result), cliTranscript.shown())) printResult(result);
+
+  if (result.isError) process.exit(1);
+}
+
+function printResult(result: CallToolResult): void {
   for (const content of result.content) {
     if (content.type === "text") {
       const stream = result.isError ? process.stderr : process.stdout;
       stream.write(content.text + "\n");
     }
   }
-
-  if (result.isError) process.exit(1);
 }
 
 main().catch((err) => {

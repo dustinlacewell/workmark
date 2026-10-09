@@ -70,16 +70,23 @@ export interface IWorkspace {
 /** How many projects a command runs against. */
 export type SelectMode = "one" | "one-or-many" | "all";
 
-/** Which host is executing commands. Interactive commands hand the terminal
- * to the child process — only the CLI can do that; the MCP server excludes
- * them from its tool list. */
+/** Which host is executing commands. The CLI streams `ctx.sh` output live;
+ * MCP captures it. Interactive commands hand the terminal to the child
+ * process — only the CLI can do that; the MCP server excludes them from its
+ * tool list. */
 export type Surface = "cli" | "mcp";
 
 /** Framework-standard context passed to every handler. */
 export interface BaseCtx {
   workspace: IWorkspace;
   /** Run a shell command (or sequence) in the resolved cwd. An array is executed
-   * sequentially; fails fast; output is concatenated. */
+   * sequentially; fails fast; output is concatenated.
+   *
+   * On the CLI, output streams to the terminal as it arrives and is also
+   * captured into the result; there is no default timeout. When several
+   * projects run at once, each streamed line is prefixed with `[project] `.
+   * Over MCP, output is captured only and the default timeout is 120 s.
+   * An explicit `timeout` applies on both. */
   sh: (cmd: string | readonly string[], opts?: { timeout?: number; env?: Record<string, string> }) => Promise<CallToolResult>;
   /** Run a shell command with explicit options (cwd, timeout, env). */
   exec: (cmd: string, opts: { cwd: string; timeout?: number; env?: Record<string, string> }) => Promise<CallToolResult>;
